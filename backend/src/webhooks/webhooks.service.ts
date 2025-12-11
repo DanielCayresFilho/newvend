@@ -19,32 +19,43 @@ export class WebhooksService {
 
       // Verificar se é uma mensagem recebida
       if (data.event === 'messages.upsert' || data.event === 'MESSAGES_UPSERT') {
-        const message = data.data?.message || data.message;
+        // Extrair o objeto completo da mensagem (com key, message, pushName, etc)
+        const message = data.data || data.message;
 
-        if (!message) {
-          return { status: 'ignored', reason: 'No message data' };
+        if (!message || !message.key) {
+          return { status: 'ignored', reason: 'No message data or key' };
         }
 
         // Ignorar mensagens enviadas pelo próprio bot
-        if (message.key?.fromMe) {
+        if (message.key.fromMe) {
           return { status: 'ignored', reason: 'Message from self' };
         }
 
-        // Número do contato (fallbacks para formatos diferentes de payload)
-        const from =
-          message.key?.remoteJid?.replace('@s.whatsapp.net', '') ||
-          (typeof data.from === 'string' ? data.from.replace('@s.whatsapp.net', '') : undefined) ||
-          (typeof data.sender === 'string' ? data.sender.replace('@s.whatsapp.net', '') : undefined);
+        // Extrair número do remetente (remoteJid quando fromMe=false é o remetente)
+        const from = message.key.remoteJid
+          ?.replace('@s.whatsapp.net', '')
+          ?.replace('@lid', '');
 
         if (!from) {
-          console.warn('Webhook sem número do remetente; ignorando.', { dataSnippet: data?.event || data?.data });
-          return { status: 'ignored', reason: 'Missing sender/remoteJid' };
+          console.warn('⚠️ Webhook sem remoteJid; ignorando.', { key: message.key });
+          return { status: 'ignored', reason: 'Missing remoteJid' };
         }
+
+        console.log('📱 Mensagem de:', from, '| fromMe:', message.key.fromMe);
+
+        // Extrair texto da mensagem
         const messageText = message.message?.conversation
           || message.message?.extendedTextMessage?.text
           || message.message?.imageMessage?.caption
           || message.message?.videoMessage?.caption
-          || 'Mídia recebida';
+          || message.message?.documentMessage?.caption
+          || (message.message?.imageMessage ? 'Imagem recebida' : undefined)
+          || (message.message?.videoMessage ? 'Vídeo recebido' : undefined)
+          || (message.message?.audioMessage ? 'Áudio recebido' : undefined)
+          || (message.message?.documentMessage ? 'Documento recebido' : undefined)
+          || 'Mensagem recebida';
+
+        console.log('💬 Texto:', messageText);
 
         const messageType = this.getMessageType(message.message);
         const mediaUrl = this.getMediaUrl(message.message);
