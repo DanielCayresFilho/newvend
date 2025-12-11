@@ -25,6 +25,9 @@ import { HealthController } from './health/health.controller';
       redis: {
         host: process.env.REDIS_HOST || 'localhost',
         port: parseInt(process.env.REDIS_PORT) || 6379,
+        username: process.env.REDIS_USERNAME,
+        password: process.env.REDIS_PASSWORD,
+        db: process.env.REDIS_DB ? parseInt(process.env.REDIS_DB) : undefined,
       },
     }),
     AuthModule,
