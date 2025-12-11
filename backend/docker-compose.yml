@@ -18,6 +18,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - vend-network
 
   redis:
     image: redis:7-alpine
@@ -32,6 +34,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - vend-network
 
   backend:
     build:
@@ -39,8 +43,15 @@ services:
       dockerfile: Dockerfile
     container_name: vend-backend
     restart: always
-    env_file:
-      - .env
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${PORT:-3000}
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
     ports:
       - "${PORT:-3000}:3000"
     depends_on:
@@ -49,14 +60,24 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ./uploads:/app/uploads
+      - uploads_data:/app/uploads
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+    networks:
+      - vend-network
+    command: >
+      sh -c "npx prisma migrate deploy &&
+             node dist/main"
 
 volumes:
   postgres_data:
   redis_data:
+  uploads_data:
+
+networks:
+  vend-network:
+    driver: bridge

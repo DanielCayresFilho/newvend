@@ -14,6 +14,7 @@ import { EvolutionModule } from './evolution/evolution.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { WebsocketModule } from './websocket/websocket.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
+import { HealthController } from './health/health.controller';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     WebsocketModule,
     WebhooksModule,
   ],
+  controllers: [HealthController],
   providers: [PrismaService],
   exports: [PrismaService],
 })

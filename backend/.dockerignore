@@ -10,5 +10,10 @@ dist
 .idea
 *.log
 .DS_Store
-prisma/migrations
 uploads
+.env.development
+.env.test
+coverage
+.github
+*.md
+!prisma/schema.prisma
