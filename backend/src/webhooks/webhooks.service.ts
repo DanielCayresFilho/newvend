@@ -31,6 +31,12 @@ export class WebhooksService {
           return { status: 'ignored', reason: 'Message from self' };
         }
 
+        // Ignorar mensagens de grupos (remoteJid termina com @g.us)
+        if (message.key.remoteJid?.includes('@g.us')) {
+          console.log('🚫 Mensagem de grupo ignorada:', message.key.remoteJid);
+          return { status: 'ignored', reason: 'Group message' };
+        }
+
         // Extrair número do remetente (remoteJid quando fromMe=false é o remetente)
         const from = message.key.remoteJid
           ?.replace('@s.whatsapp.net', '')
