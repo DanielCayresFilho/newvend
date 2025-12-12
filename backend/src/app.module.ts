@@ -19,6 +19,7 @@ import { MediaModule } from './media/media.module';
 import { TagsModule } from './tags/tags.module';
 import { ApiLogsModule } from './api-logs/api-logs.module';
 import { ApiMessagesModule } from './api-messages/api-messages.module';
+import { TemplatesModule } from './templates/templates.module';
 import { HealthController } from './health/health.controller';
 
 @Module({
@@ -52,6 +53,7 @@ import { HealthController } from './health/health.controller';
     TagsModule,
     ApiLogsModule,
     ApiMessagesModule,
+    TemplatesModule,
   ],
   controllers: [HealthController],
   providers: [PrismaService],

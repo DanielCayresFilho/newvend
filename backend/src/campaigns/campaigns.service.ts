@@ -24,6 +24,11 @@ export class CampaignsService {
         contactPhone: '',
         contactSegment: parseInt(createCampaignDto.segment),
         speed: createCampaignDto.speed,
+        useTemplate: createCampaignDto.useTemplate || false,
+        templateId: createCampaignDto.templateId,
+        templateVariables: createCampaignDto.templateVariables 
+          ? JSON.stringify(createCampaignDto.templateVariables) 
+          : null,
       },
     });
   }
@@ -87,6 +92,9 @@ export class CampaignsService {
           lineReceptor: operator.line,
           speed: campaign.speed,
           response: false,
+          useTemplate: campaign.useTemplate || false,
+          templateId: campaign.templateId,
+          templateVariables: campaign.templateVariables,
         },
       });
 
@@ -101,6 +109,9 @@ export class CampaignsService {
           contactSegment: campaign.contactSegment,
           lineId: operator.line,
           message,
+          useTemplate: campaign.useTemplate || false,
+          templateId: campaign.templateId,
+          templateVariables: campaign.templateVariables,
         },
         {
           delay,

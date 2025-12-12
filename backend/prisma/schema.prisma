@@ -99,6 +99,9 @@ model Campaign {
   response          Boolean   @default(false)
   speed             Speed
   retryCount        Int       @default(0)
+  useTemplate       Boolean   @default(false)
+  templateId        Int?
+  templateVariables String?   @db.Text
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -107,6 +110,7 @@ model Campaign {
   @@index([lineReceptor])
   @@index([response])
   @@index([dateTime])
+  @@index([templateId])
 }
 
 model BlockList {
@@ -202,5 +206,52 @@ model ApiLog {
   @@index([endpoint])
   @@index([method])
   @@index([statusCode])
+  @@index([createdAt])
+}
+
+// Template para WhatsApp Cloud API
+model Template {
+  id              Int         @id @default(autoincrement())
+  name            String
+  language        String      @default("pt_BR")
+  category        String      @default("MARKETING")
+  lineId          Int
+  namespace       String?
+  status          String      @default("PENDING")
+  headerType      String?
+  headerContent   String?     @db.Text
+  bodyText        String      @db.Text
+  footerText      String?
+  buttons         String?     @db.Text
+  variables       String?     @db.Text
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([name])
+  @@index([lineId])
+  @@index([status])
+  @@index([category])
+}
+
+// Histórico de envios de templates
+model TemplateMessage {
+  id              Int         @id @default(autoincrement())
+  templateId      Int
+  contactPhone    String
+  contactName     String?
+  lineId          Int
+  status          String      @default("SENT")
+  messageId       String?
+  variables       String?     @db.Text
+  errorMessage    String?
+  campaignId      Int?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([templateId])
+  @@index([contactPhone])
+  @@index([lineId])
+  @@index([status])
+  @@index([campaignId])
   @@index([createdAt])
 }

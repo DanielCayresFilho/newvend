@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { MassiveCpcDto, MessageDto } from './dto/massive-cpc.dto';
+import { MassiveCpcDto, MessageDto, SendTemplateExternalDto, TemplateVariableDto } from './dto/massive-cpc.dto';
 import { TagsService } from '../tags/tags.service';
 import { ApiLogsService } from '../api-logs/api-logs.service';
 import { ConversationsService } from '../conversations/conversations.service';
@@ -216,18 +216,71 @@ export class ApiMessagesService {
           continue;
         }
 
-        // Enviar mensagem via Evolution
-        const sent = await this.sendMessageViaEvolution(
-          line,
-          evolution,
-          message.phone,
-          message.mainTemplate,
-        );
+        // Determinar se deve usar template oficial
+        const useTemplate = message.useOfficialTemplate || dto.useOfficialTemplate;
+        const templateId = message.templateId || dto.defaultTemplateId;
+        const templateVariables = message.templateVariables || [];
+
+        let sent = false;
+        let finalMessage = message.mainTemplate;
+
+        if (useTemplate && templateId) {
+          // Enviar via template oficial
+          const template = await this.prisma.template.findUnique({
+            where: { id: templateId },
+          });
+
+          if (!template) {
+            errors.push({
+              phone: message.phone,
+              reason: `Template com ID ${templateId} não encontrado`,
+            });
+            continue;
+          }
+
+          // Substituir variáveis no template
+          let templateText = template.bodyText;
+          templateVariables.forEach((v: TemplateVariableDto, index: number) => {
+            templateText = templateText.replace(`{{${index + 1}}}`, v.value);
+            templateText = templateText.replace(`{{${v.key}}}`, v.value);
+          });
+          finalMessage = templateText;
+
+          // Se linha oficial, enviar via Cloud API
+          if (line.oficial && line.token && line.numberId) {
+            sent = await this.sendTemplateViaCloudApi(line, template, message.phone, templateVariables);
+          } else {
+            // Enviar via Evolution
+            sent = await this.sendTemplateViaEvolution(line, evolution, template, message.phone, templateVariables);
+          }
+
+          // Registrar envio de template
+          if (sent) {
+            await this.prisma.templateMessage.create({
+              data: {
+                templateId: template.id,
+                contactPhone: message.phone,
+                contactName: message.clientId,
+                lineId: line.id,
+                status: 'SENT',
+                variables: templateVariables.length > 0 ? JSON.stringify(templateVariables) : null,
+              },
+            });
+          }
+        } else {
+          // Enviar mensagem de texto normal via Evolution
+          sent = await this.sendMessageViaEvolution(
+            line,
+            evolution,
+            message.phone,
+            message.mainTemplate,
+          );
+        }
 
         if (!sent) {
           errors.push({
             phone: message.phone,
-            reason: 'Falha ao enviar mensagem via Evolution',
+            reason: useTemplate ? 'Falha ao enviar template' : 'Falha ao enviar mensagem via Evolution',
           });
           continue;
         }
@@ -259,9 +312,9 @@ export class ApiMessagesService {
           segment: tag.segment || operator.segment || null,
           userName: operator.name,
           userLine: operator.line!,
-          message: message.mainTemplate,
+          message: useTemplate ? `[TEMPLATE] ${finalMessage}` : finalMessage,
           sender: 'operator',
-          messageType: 'text',
+          messageType: useTemplate ? 'template' : 'text',
         });
 
         processed++;
@@ -294,6 +347,296 @@ export class ApiMessagesService {
     });
 
     return response;
+  }
+
+  /**
+   * Envia template via WhatsApp Cloud API
+   */
+  private async sendTemplateViaCloudApi(
+    line: any,
+    template: any,
+    phone: string,
+    variables: TemplateVariableDto[],
+  ): Promise<boolean> {
+    try {
+      const cleanPhone = phone.replace(/\D/g, '');
+
+      // Montar componentes com variáveis
+      const components: any[] = [];
+
+      // Body com variáveis
+      if (variables.length > 0) {
+        components.push({
+          type: 'body',
+          parameters: variables.map(v => ({
+            type: 'text',
+            text: v.value,
+          })),
+        });
+      }
+
+      await axios.post(
+        `https://graph.facebook.com/v18.0/${line.numberId}/messages`,
+        {
+          messaging_product: 'whatsapp',
+          to: cleanPhone,
+          type: 'template',
+          template: {
+            name: template.name,
+            language: { code: template.language },
+            components: components.length > 0 ? components : undefined,
+          },
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${line.token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      return true;
+    } catch (error) {
+      console.error('Erro ao enviar template via Cloud API:', error.response?.data || error.message);
+      return false;
+    }
+  }
+
+  /**
+   * Envia template via Evolution API
+   */
+  private async sendTemplateViaEvolution(
+    line: any,
+    evolution: any,
+    template: any,
+    phone: string,
+    variables: TemplateVariableDto[],
+  ): Promise<boolean> {
+    try {
+      const instanceName = `line_${line.phone.replace(/\D/g, '')}`;
+      const cleanPhone = phone.replace(/\D/g, '');
+
+      // Substituir variáveis no texto do template
+      let messageText = template.bodyText;
+      variables.forEach((v: TemplateVariableDto, index: number) => {
+        messageText = messageText.replace(`{{${index + 1}}}`, v.value);
+        messageText = messageText.replace(`{{${v.key}}}`, v.value);
+      });
+
+      // Tenta enviar como template primeiro
+      try {
+        if (line.token && line.numberId) {
+          await axios.post(
+            `${evolution.evolutionUrl}/message/sendTemplate/${instanceName}`,
+            {
+              number: cleanPhone,
+              name: template.name,
+              language: template.language,
+              components: variables.length > 0 ? [{
+                type: 'body',
+                parameters: variables.map(v => ({
+                  type: 'text',
+                  text: v.value,
+                })),
+              }] : undefined,
+            },
+            {
+              headers: { 'apikey': evolution.evolutionKey },
+            }
+          );
+          return true;
+        }
+      } catch (templateError) {
+        console.log('Fallback para mensagem de texto:', templateError.message);
+      }
+
+      // Fallback: envia como mensagem de texto
+      await axios.post(
+        `${evolution.evolutionUrl}/message/sendText/${instanceName}`,
+        {
+          number: cleanPhone,
+          text: messageText,
+        },
+        {
+          headers: { 'apikey': evolution.evolutionKey },
+        }
+      );
+
+      return true;
+    } catch (error) {
+      console.error('Erro ao enviar template via Evolution:', error.response?.data || error.message);
+      return false;
+    }
+  }
+
+  /**
+   * Envia template 1x1 via API externa
+   */
+  async sendTemplateExternal(dto: SendTemplateExternalDto, ipAddress?: string, userAgent?: string) {
+    try {
+      // Buscar operador
+      const operator = await this.findOperatorBySpecialistCode(dto.specialistCode);
+
+      // Buscar linha do operador
+      const line = await this.prisma.linesStock.findUnique({
+        where: { id: operator.line! },
+      });
+
+      if (!line || line.lineStatus !== 'active') {
+        throw new BadRequestException('Linha do operador não disponível');
+      }
+
+      // Buscar Evolution
+      const evolution = await this.prisma.evolution.findUnique({
+        where: { evolutionName: line.evolutionName },
+      });
+
+      if (!evolution) {
+        throw new NotFoundException('Evolution não encontrada');
+      }
+
+      // Verificar blocklist
+      const isBlocked = await this.prisma.blockList.findFirst({
+        where: { phone: dto.phone },
+      });
+
+      if (isBlocked) {
+        throw new BadRequestException('Número está na lista de bloqueio');
+      }
+
+      // Verificar CPC
+      const cpcCheck = await this.canSendCpcMessage(dto.phone);
+      if (!cpcCheck.canSend) {
+        throw new BadRequestException(cpcCheck.reason || 'Bloqueado por regra CPC');
+      }
+
+      // Buscar template
+      const template = await this.prisma.template.findUnique({
+        where: { id: dto.templateId },
+      });
+
+      if (!template) {
+        throw new NotFoundException(`Template com ID ${dto.templateId} não encontrado`);
+      }
+
+      const variables = dto.variables || [];
+
+      // Substituir variáveis no template
+      let templateText = template.bodyText;
+      variables.forEach((v: TemplateVariableDto, index: number) => {
+        templateText = templateText.replace(`{{${index + 1}}}`, v.value);
+        templateText = templateText.replace(`{{${v.key}}}`, v.value);
+      });
+
+      // Enviar template
+      let sent = false;
+      let messageId: string | undefined;
+
+      if (line.oficial && line.token && line.numberId) {
+        sent = await this.sendTemplateViaCloudApi(line, template, dto.phone, variables);
+      } else {
+        sent = await this.sendTemplateViaEvolution(line, evolution, template, dto.phone, variables);
+      }
+
+      if (!sent) {
+        const errorResponse = {
+          success: false,
+          message: 'Falha ao enviar template',
+        };
+
+        await this.apiLogsService.createLog({
+          endpoint: '/api/messages/template',
+          method: 'POST',
+          requestPayload: dto,
+          responsePayload: errorResponse,
+          statusCode: 500,
+          ipAddress,
+          userAgent,
+        });
+
+        throw new BadRequestException('Falha ao enviar template');
+      }
+
+      // Registrar envio de template
+      const templateMessage = await this.prisma.templateMessage.create({
+        data: {
+          templateId: dto.templateId,
+          contactPhone: dto.phone,
+          contactName: dto.contactName,
+          lineId: line.id,
+          status: 'SENT',
+          messageId,
+          variables: variables.length > 0 ? JSON.stringify(variables) : null,
+        },
+      });
+
+      // Buscar ou criar contato
+      let contact = await this.contactsService.findByPhone(dto.phone);
+      if (!contact) {
+        // Buscar tag para obter segmento
+        let segment = operator.segment;
+        if (dto.tag) {
+          const tag = await this.tagsService.findByName(dto.tag);
+          if (tag?.segment) {
+            segment = tag.segment;
+          }
+        }
+
+        contact = await this.contactsService.create({
+          name: dto.contactName || 'Cliente',
+          phone: dto.phone,
+          segment,
+        });
+      }
+
+      // Criar conversa
+      await this.conversationsService.create({
+        contactName: contact.name,
+        contactPhone: dto.phone,
+        segment: contact.segment,
+        userName: operator.name,
+        userLine: operator.line!,
+        message: `[TEMPLATE: ${template.name}] ${templateText}`,
+        sender: 'operator',
+        messageType: 'template',
+      });
+
+      const response = {
+        success: true,
+        message: 'Template enviado com sucesso',
+        templateMessageId: templateMessage.id,
+        templateName: template.name,
+      };
+
+      await this.apiLogsService.createLog({
+        endpoint: '/api/messages/template',
+        method: 'POST',
+        requestPayload: dto,
+        responsePayload: response,
+        statusCode: 200,
+        ipAddress,
+        userAgent,
+      });
+
+      return response;
+    } catch (error) {
+      const errorResponse = {
+        success: false,
+        message: error.message,
+      };
+
+      await this.apiLogsService.createLog({
+        endpoint: '/api/messages/template',
+        method: 'POST',
+        requestPayload: dto,
+        responsePayload: errorResponse,
+        statusCode: error.status || 500,
+        ipAddress,
+        userAgent,
+      });
+
+      throw error;
+    }
   }
 }
 
