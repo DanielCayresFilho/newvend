@@ -71,7 +71,7 @@ async function main() {
   console.log('✅ Tabulações criadas:', tabulations.length);
 
   // Criar usuário admin
-  const adminPassword = await argon2.hash('admin123');
+  const adminPassword = await argon2.hash('<@P0d3ro50ço#a$S@@');
   const admin = await prisma.user.upsert({
     where: { email: 'admin@vend.com' },
     update: {},
@@ -84,10 +84,10 @@ async function main() {
     },
   });
 
-  console.log('✅ Admin criado:', admin.email, '| senha: admin123');
+  console.log('✅ Admin criado:', admin.email);
 
   // Criar usuário supervisor
-  const supervisorPassword = await argon2.hash('supervisor123');
+  const supervisorPassword = await argon2.hash('..?SuP3RV15o4)(ALt');
   const supervisor = await prisma.user.upsert({
     where: { email: 'supervisor@vend.com' },
     update: {},
@@ -101,10 +101,10 @@ async function main() {
     },
   });
 
-  console.log('✅ Supervisor criado:', supervisor.email, '| senha: supervisor123');
+  console.log('✅ Supervisor criado:', supervisor.email);
 
   // Criar usuário operator
-  const operatorPassword = await argon2.hash('operator123');
+  const operatorPassword = await argon2.hash('ç~^OpeR4t0R=3}}ooo');
   const operator = await prisma.user.upsert({
     where: { email: 'operator@vend.com' },
     update: {},
