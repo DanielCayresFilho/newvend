@@ -16,6 +16,9 @@ import { WebsocketModule } from './websocket/websocket.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { ReportsModule } from './reports/reports.module';
 import { MediaModule } from './media/media.module';
+import { TagsModule } from './tags/tags.module';
+import { ApiLogsModule } from './api-logs/api-logs.module';
+import { ApiMessagesModule } from './api-messages/api-messages.module';
 import { HealthController } from './health/health.controller';
 
 @Module({
@@ -46,6 +49,9 @@ import { HealthController } from './health/health.controller';
     WebhooksModule,
     ReportsModule,
     MediaModule,
+    TagsModule,
+    ApiLogsModule,
+    ApiMessagesModule,
   ],
   controllers: [HealthController],
   providers: [PrismaService],

@@ -175,3 +175,32 @@ model Conversation {
   @@index([tabulation])
   @@index([datetime])
 }
+
+model Tag {
+  id              Int         @id @default(autoincrement())
+  name            String      @unique
+  description     String?
+  segment         Int?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([name])
+  @@index([segment])
+}
+
+model ApiLog {
+  id              Int         @id @default(autoincrement())
+  endpoint        String
+  method          String
+  requestPayload  String      @db.Text
+  responsePayload String      @db.Text
+  statusCode      Int
+  ipAddress       String?
+  userAgent       String?
+  createdAt       DateTime    @default(now())
+
+  @@index([endpoint])
+  @@index([method])
+  @@index([statusCode])
+  @@index([createdAt])
+}
