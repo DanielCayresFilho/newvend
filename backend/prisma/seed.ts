@@ -18,32 +18,55 @@ async function main() {
   console.log('✅ Segmento criado:', segment.name);
 
   // Criar tabulações
-  const tabulations = await Promise.all([
-    prisma.tabulation.upsert({
-      where: { id: 1 },
-      update: {},
-      create: {
-        name: 'Atendido',
-        isCPC: true,
-      },
-    }),
-    prisma.tabulation.upsert({
-      where: { id: 2 },
-      update: {},
-      create: {
-        name: 'Não Atendido',
-        isCPC: false,
-      },
-    }),
-    prisma.tabulation.upsert({
-      where: { id: 3 },
-      update: {},
-      create: {
-        name: 'Retornar Depois',
-        isCPC: false,
-      },
-    }),
-  ]);
+  const tabulationData = [
+    { name: 'DUVIDAS', isCPC: false },
+    { name: 'ENTREGA AMIGAVEL - INDICACAO', isCPC: true },
+    { name: 'ENTREGA AMIGAVEL - NAO ATENDE AOS CRITERIOS', isCPC: false },
+    { name: 'GEROU ACORDO DISCADOR', isCPC: true },
+    { name: 'MINUTA DE ACORDO - NEGOCIACAO / ENVIO', isCPC: true },
+    { name: 'NÚMERO COMERCIAL', isCPC: false },
+    { name: 'OFERTA MIX', isCPC: false },
+    { name: 'PENDENTE CONFIRMAÇÃO DE DADOS', isCPC: false },
+    { name: 'PROBLEMA NO BEM - BUSCA/APREENSAO', isCPC: false },
+    { name: 'RECLAMAÇÃO', isCPC: false },
+    { name: 'RECUSA CONFIRMAR CPF/NOME', isCPC: false },
+    { name: 'DISPARO AUTOMATICO - WHATSAPP', isCPC: false },
+    { name: 'ACORDO REALIZADO', isCPC: true },
+    { name: 'AGUARDANDO LIBERACAO DO JURIDICO', isCPC: false },
+    { name: 'BAIXADO', isCPC: true },
+    { name: 'BOLETO PAGO', isCPC: true },
+    { name: 'CLIENTE ALEGA PAGAMENTO', isCPC: false },
+    { name: 'CLIENTE COM AÇÃO CONTRÁRIA', isCPC: false },
+    { name: 'CLIENTE EM NEGOCIAÇÃO', isCPC: false },
+    { name: 'COMPROVANTE', isCPC: false },
+    { name: 'CONTATO COM TERCEIRO', isCPC: false },
+    { name: 'RECUSA-SE A NEGOCIAR', isCPC: false },
+    { name: 'REENVIO BOLETO/OPERAÇÃO', isCPC: false },
+    { name: 'RENEG - EM AVALIACAO', isCPC: false },
+    { name: 'RENEGOCIAÇÃO – INDICACAO', isCPC: true },
+    { name: 'SEM CONDIÇÕES', isCPC: false },
+    { name: 'SEM INTERESSE', isCPC: false },
+    { name: 'SEM RESPOSTA DO CLIENTE', isCPC: false },
+    { name: 'TESTE', isCPC: false },
+    { name: 'DESCONHECE O CLIENTE', isCPC: false },
+    { name: 'DESCONHECE A DIVIDA', isCPC: false },
+  ];
+
+  const tabulations = await Promise.all(
+    tabulationData.map((tab, index) =>
+      prisma.tabulation.upsert({
+        where: { id: index + 1 },
+        update: {
+          name: tab.name,
+          isCPC: tab.isCPC,
+        },
+        create: {
+          name: tab.name,
+          isCPC: tab.isCPC,
+        },
+      })
+    )
+  );
 
   console.log('✅ Tabulações criadas:', tabulations.length);
 
@@ -110,6 +133,30 @@ async function main() {
 
   console.log('✅ Evolution criada:', evolution.evolutionName);
 
+  // Criar Tags de exemplo
+  const tags = await Promise.all([
+    prisma.tag.upsert({
+      where: { name: 'emp1' },
+      update: {},
+      create: {
+        name: 'emp1',
+        description: 'Tag de exemplo para carteira 1',
+        segment: segment.id,
+      },
+    }),
+    prisma.tag.upsert({
+      where: { name: 'emp2' },
+      update: {},
+      create: {
+        name: 'emp2',
+        description: 'Tag de exemplo para carteira 2',
+        segment: segment.id,
+      },
+    }),
+  ]);
+
+  console.log('✅ Tags criadas:', tags.length);
+
   console.log('✅ Seed concluído com sucesso!');
   console.log('\n📋 Dados criados:');
   console.log('👥 Usuários:');
@@ -120,6 +167,10 @@ async function main() {
   console.log('   Nome: Evolution01');
   console.log('   URL: http://localhost:8080');
   console.log('   ⚠️  Lembre-se de atualizar a URL e chave da Evolution!');
+  console.log('\n🏷️  Tags:');
+  console.log('   emp1, emp2');
+  console.log('\n📊 Tabulações:');
+  console.log(`   ${tabulations.length} tabulações criadas`);
 }
 
 main()
