@@ -181,12 +181,162 @@ Relatório unificado de tempos de atendimento.
 - tmro
 - protocolo
 
+## NOVOS RELATÓRIOS - TEMPLATES
+
+### 8. Templates
+**Endpoint:** `GET /reports/templates`
+
+Relatório de templates utilizados na plataforma.
+
+**Estrutura de Retorno:**
+- Data de Solicitação de Envio
+- Canal (Oficial ou Não Oficial)
+- Fornecedor (Vend)
+- Nome do Template
+- Conteúdo do Disparo Inicial
+- Carteira
+- WhatsApp Saída
+- Quantidade de Disparos
+- Enviado
+- Confirmado
+- Leitura
+- Falha
+- Interação
+
+### 9. Relatório Completo CSV
+**Endpoint:** `GET /reports/completo-csv`
+
+Relatório completo com informações de atendimentos.
+
+**Estrutura de Retorno:**
+- Id
+- Carteira
+- Nome do Cliente
+- Telefone
+- CNPJ/CPF
+- Contrato
+- Nome do Operador
+- Tabulação
+- Status
+- Primeiro Atendimento
+- Último Atendimento
+- Enviado
+- Confirmado
+- Leitura
+- Falha
+- Interação
+
+### 10. Relatório de Equipe
+**Endpoint:** `GET /reports/equipe`
+
+Relatório de mensagens enviadas por operador.
+
+**Estrutura de Retorno:**
+- id
+- Operador
+- Quantidade de Mensagens
+- Carteira
+
+### 11. Relatório de Dados Transacionados
+**Endpoint:** `GET /reports/dados-transacionados`
+
+Relatório de dados transacionados via templates.
+
+**Estrutura de Retorno:**
+- id Ticket
+- id Template
+- Nome do Template
+- Mensagem Template
+- Dispositivo Disparo
+- Segmento do Dispositivo
+- E-mail Operador
+- Data de Disparo
+- Dispositivo Recebido
+- Enviado
+- Confirmado
+- Leitura
+- Falha
+- Interação
+
+### 12. Relatório Detalhado de Conversas
+**Endpoint:** `GET /reports/detalhado-conversas`
+
+Relatório detalhado com todas as mensagens das conversas.
+
+**Estrutura de Retorno:**
+- Data de Conversa
+- Protocolo
+- Login do Operador
+- CPF/CNPJ
+- Contrato
+- Data e Hora início da Conversa
+- Data e Hora fim da Conversa
+- Paschoalotto
+- Telefone do Cliente
+- Segmento
+- Hora da Mensagem
+- Mensagem Transcrita
+- Quem Enviou a Mensagem
+- Finalização
+
+### 13. Relatório de Linhas
+**Endpoint:** `GET /reports/linhas`
+
+Relatório de linhas WhatsApp cadastradas.
+
+**Estrutura de Retorno:**
+- id
+- Número
+- Data de Transferência
+- Blindado
+- Carteira
+
+### 14. Relatório Resumo de Atendimentos
+**Endpoint:** `GET /reports/resumo-atendimentos`
+
+Resumo de atendimentos realizados.
+
+**Estrutura de Retorno:**
+- Data Início Conversa
+- Data de Início da Conversa
+- Teve Retorno
+- Telefone do Cliente
+- Login do Operador
+- CPF/CNPJ
+- Contrato
+- Data e Hora ínicio da Conversa
+- Data e hora fim da Conversa
+- Finalização
+- Segmento
+- Carteira
+- Protocolo
+
+### 15. Relatório HiperPersonalizado
+**Endpoint:** `GET /reports/hiper-personalizado`
+
+Relatório hiperpersonalizado de disparos.
+
+**Estrutura de Retorno:**
+- Data de Disparo
+- Nome do Template
+- Protocolo
+- Segmento
+- Login do Operador
+- Número de Saída
+- CPF do Cliente
+- Telefone do Cliente
+- Finalização
+- Disparo (Sempre 1)
+- Falha (0 ou 1)
+- Entrega (0 ou 1)
+- Retorno (0 ou 1)
+
 ## RELATÓRIO CONSOLIDADO
 
 ### Consolidado (Todos os relatórios)
 **Endpoint:** `GET /reports/consolidado`
 
-Retorna todos os 7 relatórios de uma vez (executados em paralelo).
+Retorna todos os 15 relatórios de uma vez (executados em paralelo).
 
 **Resposta:**
 ```json
@@ -203,7 +353,15 @@ Retorna todos os 7 relatórios de uma vez (executados em paralelo).
     "lineStatus": [...],
     "envios": [...],
     "indicadores": [...],
-    "tempos": [...]
+    "tempos": [...],
+    "templates": [...],
+    "completoCsv": [...],
+    "equipe": [...],
+    "dadosTransacionados": [...],
+    "detalhadoConversas": [...],
+    "linhas": [...],
+    "resumoAtendimentos": [...],
+    "hiperPersonalizado": [...]
   }
 }
 ```
@@ -250,3 +408,7 @@ Exemplos:
 4. **CPC**: Tabulações marcadas com `isCPC = true` são consideradas conversões produtivas.
 5. **TMA**: Tempo Médio de Atendimento calculado em minutos.
 6. **Tipo de Envio**: "Massivo" (campanhas) ou "1:1" (atendimento individual).
+7. **Templates**: Relatório agrupa campanhas por nome do template.
+8. **Interação**: Considera se houve resposta do cliente (mensagens com sender='contact').
+9. **Blindado**: Linhas com status 'ban' são consideradas blindadas.
+10. **Paschoalotto**: Campo fixo "Paschoalotto" no relatório detalhado de conversas.

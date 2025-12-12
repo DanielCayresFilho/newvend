@@ -61,13 +61,81 @@ export class ReportsController {
   }
 
   /**
+   * NOVOS RELATÓRIOS - TEMPLATES
+   */
+
+  @Get('templates')
+  @Roles('admin', 'supervisor')
+  async getTemplatesReport(@Query() filters: ReportFilterDto) {
+    return this.reportsService.getTemplatesReport(filters);
+  }
+
+  @Get('completo-csv')
+  @Roles('admin', 'supervisor')
+  async getCompletoCsvReport(@Query() filters: ReportFilterDto) {
+    return this.reportsService.getCompletoCsvReport(filters);
+  }
+
+  @Get('equipe')
+  @Roles('admin', 'supervisor')
+  async getEquipeReport(@Query() filters: ReportFilterDto) {
+    return this.reportsService.getEquipeReport(filters);
+  }
+
+  @Get('dados-transacionados')
+  @Roles('admin', 'supervisor')
+  async getDadosTransacionadosReport(@Query() filters: ReportFilterDto) {
+    return this.reportsService.getDadosTransacionadosReport(filters);
+  }
+
+  @Get('detalhado-conversas')
+  @Roles('admin', 'supervisor')
+  async getDetalhadoConversasReport(@Query() filters: ReportFilterDto) {
+    return this.reportsService.getDetalhadoConversasReport(filters);
+  }
+
+  @Get('linhas')
+  @Roles('admin', 'supervisor')
+  async getLinhasReport(@Query() filters: ReportFilterDto) {
+    return this.reportsService.getLinhasReport(filters);
+  }
+
+  @Get('resumo-atendimentos')
+  @Roles('admin', 'supervisor')
+  async getResumoAtendimentosReport(@Query() filters: ReportFilterDto) {
+    return this.reportsService.getResumoAtendimentosReport(filters);
+  }
+
+  @Get('hiper-personalizado')
+  @Roles('admin', 'supervisor')
+  async getHiperPersonalizadoReport(@Query() filters: ReportFilterDto) {
+    return this.reportsService.getHiperPersonalizadoReport(filters);
+  }
+
+  /**
    * RELATÓRIO CONSOLIDADO
    * Retorna todos os relatórios de uma vez
    */
   @Get('consolidado')
   @Roles('admin', 'supervisor')
   async getConsolidatedReport(@Query() filters: ReportFilterDto) {
-    const [opSintetico, kpi, hsm, lineStatus, envios, indicadores, tempos] = await Promise.all([
+    const [
+      opSintetico,
+      kpi,
+      hsm,
+      lineStatus,
+      envios,
+      indicadores,
+      tempos,
+      templates,
+      completoCsv,
+      equipe,
+      dadosTransacionados,
+      detalhadoConversas,
+      linhas,
+      resumoAtendimentos,
+      hiperPersonalizado,
+    ] = await Promise.all([
       this.reportsService.getOpSinteticoReport(filters),
       this.reportsService.getKpiReport(filters),
       this.reportsService.getHsmReport(filters),
@@ -75,6 +143,14 @@ export class ReportsController {
       this.reportsService.getEnviosReport(filters),
       this.reportsService.getIndicadoresReport(filters),
       this.reportsService.getTemposReport(filters),
+      this.reportsService.getTemplatesReport(filters),
+      this.reportsService.getCompletoCsvReport(filters),
+      this.reportsService.getEquipeReport(filters),
+      this.reportsService.getDadosTransacionadosReport(filters),
+      this.reportsService.getDetalhadoConversasReport(filters),
+      this.reportsService.getLinhasReport(filters),
+      this.reportsService.getResumoAtendimentosReport(filters),
+      this.reportsService.getHiperPersonalizadoReport(filters),
     ]);
 
     return {
@@ -91,6 +167,14 @@ export class ReportsController {
         envios,
         indicadores,
         tempos,
+        templates,
+        completoCsv,
+        equipe,
+        dadosTransacionados,
+        detalhadoConversas,
+        linhas,
+        resumoAtendimentos,
+        hiperPersonalizado,
       },
     };
   }

@@ -607,4 +607,613 @@ export class ReportsService {
 
     return result;
   }
+
+  /**
+   * RELATÓRIO DE TEMPLATES
+   * Estrutura: Data de Solicitação de Envio, Canal, Fornecedor, Nome do Template,
+   * Conteúdo do Disparo Inicial, Carteira, WhatsApp Saída, Quantidade de Disparos,
+   * Enviado, Confirmado, Leitura, Falha, Interação
+   */
+  async getTemplatesReport(filters: ReportFilterDto) {
+    const whereClause: any = {};
+
+    if (filters.segment) {
+      whereClause.contactSegment = filters.segment;
+    }
+
+    if (filters.startDate || filters.endDate) {
+      whereClause.dateTime = {};
+      if (filters.startDate) {
+        whereClause.dateTime.gte = new Date(filters.startDate);
+      }
+      if (filters.endDate) {
+        whereClause.dateTime.lte = new Date(filters.endDate);
+      }
+    }
+
+    const campaigns = await this.prisma.campaign.findMany({
+      where: whereClause,
+      orderBy: { dateTime: 'desc' },
+    });
+
+    const segments = await this.prisma.segment.findMany();
+    const segmentMap = new Map(segments.map(s => [s.id, s]));
+
+    const lines = await this.prisma.linesStock.findMany();
+    const lineMap = new Map(lines.map(l => [l.id, l]));
+
+    // Agrupar por nome do template para contar disparos
+    const templateGroups: Record<string, any[]> = {};
+    campaigns.forEach(campaign => {
+      if (!templateGroups[campaign.name]) {
+        templateGroups[campaign.name] = [];
+      }
+      templateGroups[campaign.name].push(campaign);
+    });
+
+    const result: any[] = [];
+
+    Object.entries(templateGroups).forEach(([templateName, templateCampaigns]) => {
+      const firstCampaign = templateCampaigns[0];
+      const segment = firstCampaign.contactSegment ? segmentMap.get(firstCampaign.contactSegment) : null;
+      const line = firstCampaign.lineReceptor ? lineMap.get(firstCampaign.lineReceptor) : null;
+
+      // Verificar se houve retorno (se alguma campanha teve resposta)
+      const teveRetorno = templateCampaigns.some(c => c.response);
+      const enviado = templateCampaigns.length > 0;
+      const confirmado = templateCampaigns.some(c => c.response);
+      const falha = templateCampaigns.some(c => c.retryCount > 0);
+
+      result.push({
+        'Data de Solicitação de Envio': this.formatDate(firstCampaign.createdAt),
+        Canal: line?.oficial ? 'Oficial' : 'Não Oficial',
+        Fornecedor: 'Vend',
+        'Nome do Template': templateName,
+        'Conteúdo do Disparo Inicial': null, // Não temos mensagem na campanha, seria necessário adicionar
+        Carteira: segment?.name || null,
+        'WhatsApp Saída': line?.phone || null,
+        'Quantidade de Disparos': templateCampaigns.length,
+        Enviado: enviado ? 'Sim' : 'Não',
+        Confirmado: confirmado ? 'Sim' : 'Não',
+        Leitura: null, // Não temos informação de leitura
+        Falha: falha ? 'Sim' : 'Não',
+        Interação: teveRetorno ? 'Sim' : 'Não',
+      });
+    });
+
+    return result;
+  }
+
+  /**
+   * RELATÓRIO COMPLETO CSV
+   * Estrutura: Id, Carteira, Nome do Cliente, Telefone, CNPJ/CPF, Contrato,
+   * Nome do Operador, Tabulação, Status, Primeiro Atendimento, Último Atendimento,
+   * Enviado, Confirmado, Leitura, Falha, Interação
+   */
+  async getCompletoCsvReport(filters: ReportFilterDto) {
+    const whereClause: any = {};
+
+    if (filters.segment) {
+      whereClause.segment = filters.segment;
+    }
+
+    if (filters.startDate || filters.endDate) {
+      whereClause.datetime = {};
+      if (filters.startDate) {
+        whereClause.datetime.gte = new Date(filters.startDate);
+      }
+      if (filters.endDate) {
+        whereClause.datetime.lte = new Date(filters.endDate);
+      }
+    }
+
+    const conversations = await this.prisma.conversation.findMany({
+      where: whereClause,
+      orderBy: { datetime: 'asc' },
+    });
+
+    const segments = await this.prisma.segment.findMany();
+    const segmentMap = new Map(segments.map(s => [s.id, s]));
+
+    const contacts = await this.prisma.contact.findMany();
+    const contactMap = new Map(contacts.map(c => [c.phone, c]));
+
+    const tabulations = await this.prisma.tabulation.findMany();
+    const tabulationMap = new Map(tabulations.map(t => [t.id, t]));
+
+    // Agrupar por contato para pegar primeiro e último atendimento
+    const contactConvs: Record<string, any[]> = {};
+    conversations.forEach(conv => {
+      if (!contactConvs[conv.contactPhone]) {
+        contactConvs[conv.contactPhone] = [];
+      }
+      contactConvs[conv.contactPhone].push(conv);
+    });
+
+    const result: any[] = [];
+
+    Object.entries(contactConvs).forEach(([phone, convs]) => {
+      const firstConv = convs[0];
+      const lastConv = convs[convs.length - 1];
+      const contact = contactMap.get(phone);
+      const segment = firstConv.segment ? segmentMap.get(firstConv.segment) : null;
+      const tabulation = lastConv.tabulation ? tabulationMap.get(lastConv.tabulation) : null;
+
+      // Verificar se houve interação (resposta do cliente)
+      const teveInteracao = convs.some(c => c.sender === 'contact');
+      const enviado = convs.some(c => c.sender === 'operator');
+      const confirmado = enviado; // Assumindo que se foi enviado, foi confirmado
+
+      result.push({
+        Id: firstConv.id,
+        Carteira: segment?.name || null,
+        'Nome do Cliente': firstConv.contactName,
+        Telefone: phone,
+        'CNPJ/CPF': contact?.cpf || null,
+        Contrato: contact?.contract || null,
+        'Nome do Operador': firstConv.userName || null,
+        Tabulação: tabulation?.name || null,
+        Status: tabulation ? 'Finalizado' : 'Em Andamento',
+        'Primeiro Atendimento': this.formatDate(firstConv.datetime),
+        'Último Atendimento': this.formatDate(lastConv.datetime),
+        Enviado: enviado ? 'Sim' : 'Não',
+        Confirmado: confirmado ? 'Sim' : 'Não',
+        Leitura: null,
+        Falha: 'Não',
+        Interação: teveInteracao ? 'Sim' : 'Não',
+      });
+    });
+
+    return result;
+  }
+
+  /**
+   * RELATÓRIO DE EQUIPE
+   * Estrutura: id, Operador, Quantidade de Mensagens, Carteira
+   */
+  async getEquipeReport(filters: ReportFilterDto) {
+    const whereClause: any = {
+      sender: 'operator',
+    };
+
+    if (filters.segment) {
+      whereClause.segment = filters.segment;
+    }
+
+    if (filters.startDate || filters.endDate) {
+      whereClause.datetime = {};
+      if (filters.startDate) {
+        whereClause.datetime.gte = new Date(filters.startDate);
+      }
+      if (filters.endDate) {
+        whereClause.datetime.lte = new Date(filters.endDate);
+      }
+    }
+
+    const conversations = await this.prisma.conversation.findMany({
+      where: whereClause,
+      orderBy: { datetime: 'desc' },
+    });
+
+    const segments = await this.prisma.segment.findMany();
+    const segmentMap = new Map(segments.map(s => [s.id, s]));
+
+    const users = await this.prisma.user.findMany({
+      where: {
+        role: 'operator',
+      },
+    });
+    const userMap = new Map(users.map(u => [u.name, u]));
+
+    // Agrupar por operador
+    const operatorGroups: Record<string, { count: number; segment?: number }> = {};
+    
+    conversations.forEach(conv => {
+      if (!conv.userName) return;
+      
+      const key = conv.userName;
+      if (!operatorGroups[key]) {
+        operatorGroups[key] = { count: 0, segment: conv.segment || undefined };
+      }
+      operatorGroups[key].count++;
+    });
+
+    const result: any[] = [];
+
+    Object.entries(operatorGroups).forEach(([userName, data]) => {
+      const user = userMap.get(userName);
+      const segment = data.segment ? segmentMap.get(data.segment) : null;
+
+      result.push({
+        id: user?.id || null,
+        Operador: userName,
+        'Quantidade de Mensagens': data.count,
+        Carteira: segment?.name || null,
+      });
+    });
+
+    return result;
+  }
+
+  /**
+   * RELATÓRIO DE DADOS TRANSACIONADOS
+   * Estrutura: id Ticket, id Template, Nome do Template, Mensagem Template,
+   * Dispositivo Disparo, Segmento do Dispositivo, E-mail Operador, Data de Disparo,
+   * Dispositivo Recebido, Enviado, Confirmado, Leitura, Falha, Interação
+   */
+  async getDadosTransacionadosReport(filters: ReportFilterDto) {
+    const whereClause: any = {};
+
+    if (filters.segment) {
+      whereClause.contactSegment = filters.segment;
+    }
+
+    if (filters.startDate || filters.endDate) {
+      whereClause.dateTime = {};
+      if (filters.startDate) {
+        whereClause.dateTime.gte = new Date(filters.startDate);
+      }
+      if (filters.endDate) {
+        whereClause.dateTime.lte = new Date(filters.endDate);
+      }
+    }
+
+    const campaigns = await this.prisma.campaign.findMany({
+      where: whereClause,
+      orderBy: { dateTime: 'desc' },
+    });
+
+    const segments = await this.prisma.segment.findMany();
+    const segmentMap = new Map(segments.map(s => [s.id, s]));
+
+    const lines = await this.prisma.linesStock.findMany();
+    const lineMap = new Map(lines.map(l => [l.id, l]));
+
+    const users = await this.prisma.user.findMany({
+      where: {
+        line: { not: null },
+      },
+    });
+    const userMap = new Map(
+      users
+        .filter(u => u.line !== null)
+        .map(u => [u.line!, u])
+    );
+
+    // Buscar conversas relacionadas para verificar interação
+    const contactPhones = campaigns.map(c => c.contactPhone);
+    const conversations = await this.prisma.conversation.findMany({
+      where: {
+        contactPhone: { in: contactPhones },
+      },
+    });
+
+    const contactConvs: Record<string, boolean> = {};
+    conversations.forEach(conv => {
+      if (conv.sender === 'contact') {
+        contactConvs[conv.contactPhone] = true;
+      }
+    });
+
+    const result = campaigns.map(campaign => {
+      const segment = campaign.contactSegment ? segmentMap.get(campaign.contactSegment) : null;
+      const line = campaign.lineReceptor ? lineMap.get(campaign.lineReceptor) : null;
+      const user = line ? userMap.get(line.id) : null;
+
+      return {
+        'id Ticket': campaign.id,
+        'id Template': null, // Não temos ID de template separado
+        'Nome do Template': campaign.name,
+        'Mensagem Template': null, // Não temos mensagem na campanha
+        'Dispositivo Disparo': line?.phone || null,
+        'Segmento do Dispositivo': segment?.name || null,
+        'E-mail Operador': user?.email || null,
+        'Data de Disparo': this.formatDate(campaign.dateTime),
+        'Dispositivo Recebido': campaign.contactPhone,
+        Enviado: 'Sim',
+        Confirmado: campaign.response ? 'Sim' : 'Não',
+        Leitura: null,
+        Falha: campaign.retryCount > 0 ? 'Sim' : 'Não',
+        Interação: contactConvs[campaign.contactPhone] ? 'Sim' : 'Não',
+      };
+    });
+
+    return result;
+  }
+
+  /**
+   * RELATÓRIO DETALHADO DE CONVERSAS
+   * Estrutura: Data de Conversa, Protocolo, Login do Operador, CPF/CNPJ, Contrato,
+   * Data e Hora início da Conversa, Data e Hora fim da Conversa, Paschoalotto,
+   * Telefone do Cliente, Segmento, Hora da Mensagem, Mensagem Transcrita,
+   * Quem Enviou a Mensagem, Finalização
+   */
+  async getDetalhadoConversasReport(filters: ReportFilterDto) {
+    const whereClause: any = {};
+
+    if (filters.segment) {
+      whereClause.segment = filters.segment;
+    }
+
+    if (filters.startDate || filters.endDate) {
+      whereClause.datetime = {};
+      if (filters.startDate) {
+        whereClause.datetime.gte = new Date(filters.startDate);
+      }
+      if (filters.endDate) {
+        whereClause.datetime.lte = new Date(filters.endDate);
+      }
+    }
+
+    const conversations = await this.prisma.conversation.findMany({
+      where: whereClause,
+      orderBy: [
+        { contactPhone: 'asc' },
+        { datetime: 'asc' },
+      ],
+    });
+
+    const segments = await this.prisma.segment.findMany();
+    const segmentMap = new Map(segments.map(s => [s.id, s]));
+
+    const contacts = await this.prisma.contact.findMany();
+    const contactMap = new Map(contacts.map(c => [c.phone, c]));
+
+    const tabulations = await this.prisma.tabulation.findMany();
+    const tabulationMap = new Map(tabulations.map(t => [t.id, t]));
+
+    // Agrupar por contato para pegar início e fim
+    const contactConvs: Record<string, any[]> = {};
+    conversations.forEach(conv => {
+      if (!contactConvs[conv.contactPhone]) {
+        contactConvs[conv.contactPhone] = [];
+      }
+      contactConvs[conv.contactPhone].push(conv);
+    });
+
+    const result: any[] = [];
+
+    Object.entries(contactConvs).forEach(([phone, convs]) => {
+      const firstConv = convs[0];
+      const lastConv = convs[convs.length - 1];
+      const contact = contactMap.get(phone);
+      const segment = firstConv.segment ? segmentMap.get(firstConv.segment) : null;
+      const tabulation = lastConv.tabulation ? tabulationMap.get(lastConv.tabulation) : null;
+
+      // Criar uma linha para cada mensagem
+      convs.forEach(conv => {
+        result.push({
+          'Data de Conversa': this.formatDate(firstConv.datetime),
+          Protocolo: firstConv.id,
+          'Login do Operador': conv.userName || null,
+          'CPF/CNPJ': contact?.cpf || null,
+          Contrato: contact?.contract || null,
+          'Data e Hora início da Conversa': `${this.formatDate(firstConv.datetime)} ${this.formatTime(firstConv.datetime)}`,
+          'Data e Hora fim da Conversa': `${this.formatDate(lastConv.datetime)} ${this.formatTime(lastConv.datetime)}`,
+          Paschoalotto: 'Paschoalotto',
+          'Telefone do Cliente': phone,
+          Segmento: segment?.name || null,
+          'Hora da Mensagem': this.formatTime(conv.datetime),
+          'Mensagem Transcrita': conv.message,
+          'Quem Enviou a Mensagem': conv.sender === 'operator' ? 'Operador' : 'Cliente',
+          Finalização: tabulation?.name || null,
+        });
+      });
+    });
+
+    return result;
+  }
+
+  /**
+   * RELATÓRIO DE LINHAS
+   * Estrutura: id, Número, Data de Transferência, Blindado, Carteira
+   */
+  async getLinhasReport(filters: ReportFilterDto) {
+    const whereClause: any = {};
+
+    if (filters.segment) {
+      whereClause.segment = filters.segment;
+    }
+
+    const lines = await this.prisma.linesStock.findMany({
+      where: whereClause,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const segments = await this.prisma.segment.findMany();
+    const segmentMap = new Map(segments.map(s => [s.id, s]));
+
+    const result = lines.map(line => {
+      const segment = line.segment ? segmentMap.get(line.segment) : null;
+
+      return {
+        id: line.id,
+        Número: line.phone,
+        'Data de Transferência': this.formatDate(line.createdAt),
+        Blindado: line.lineStatus === 'ban' ? 'Sim' : 'Não',
+        Carteira: segment?.name || null,
+      };
+    });
+
+    return result;
+  }
+
+  /**
+   * RELATÓRIO RESUMO DE ATENDIMENTOS
+   * Estrutura: Data Início Conversa, Data de Início da Conversa, Teve Retorno,
+   * Telefone do Cliente, Login do Operador, CPF/CNPJ, Contrato,
+   * Data e Hora ínicio da Conversa, Data e hora fim da Conversa, Finalização,
+   * Segmento, Carteira, Protocolo
+   */
+  async getResumoAtendimentosReport(filters: ReportFilterDto) {
+    const whereClause: any = {};
+
+    if (filters.segment) {
+      whereClause.segment = filters.segment;
+    }
+
+    if (filters.startDate || filters.endDate) {
+      whereClause.datetime = {};
+      if (filters.startDate) {
+        whereClause.datetime.gte = new Date(filters.startDate);
+      }
+      if (filters.endDate) {
+        whereClause.datetime.lte = new Date(filters.endDate);
+      }
+    }
+
+    const conversations = await this.prisma.conversation.findMany({
+      where: whereClause,
+      orderBy: { datetime: 'asc' },
+    });
+
+    const segments = await this.prisma.segment.findMany();
+    const segmentMap = new Map(segments.map(s => [s.id, s]));
+
+    const contacts = await this.prisma.contact.findMany();
+    const contactMap = new Map(contacts.map(c => [c.phone, c]));
+
+    const tabulations = await this.prisma.tabulation.findMany();
+    const tabulationMap = new Map(tabulations.map(t => [t.id, t]));
+
+    // Agrupar por contato
+    const contactConvs: Record<string, any[]> = {};
+    conversations.forEach(conv => {
+      if (!contactConvs[conv.contactPhone]) {
+        contactConvs[conv.contactPhone] = [];
+      }
+      contactConvs[conv.contactPhone].push(conv);
+    });
+
+    const result: any[] = [];
+
+    Object.entries(contactConvs).forEach(([phone, convs]) => {
+      const firstConv = convs[0];
+      const lastConv = convs[convs.length - 1];
+      const contact = contactMap.get(phone);
+      const segment = firstConv.segment ? segmentMap.get(firstConv.segment) : null;
+      const tabulation = lastConv.tabulation ? tabulationMap.get(lastConv.tabulation) : null;
+
+      // Verificar se teve retorno (resposta do cliente)
+      const teveRetorno = convs.some(c => c.sender === 'contact');
+
+      result.push({
+        'Data Início Conversa': this.formatDate(firstConv.createdAt),
+        'Data de Início da Conversa': this.formatDate(firstConv.datetime),
+        'Teve Retorno': teveRetorno ? 'Sim' : 'Não',
+        'Telefone do Cliente': phone,
+        'Login do Operador': firstConv.userName || null,
+        'CPF/CNPJ': contact?.cpf || null,
+        Contrato: contact?.contract || null,
+        'Data e Hora ínicio da Conversa': `${this.formatDate(firstConv.datetime)} ${this.formatTime(firstConv.datetime)}`,
+        'Data e hora fim da Conversa': `${this.formatDate(lastConv.datetime)} ${this.formatTime(lastConv.datetime)}`,
+        Finalização: tabulation?.name || null,
+        Segmento: segment?.name || null,
+        Carteira: segment?.name || null,
+        Protocolo: firstConv.id,
+      });
+    });
+
+    return result;
+  }
+
+  /**
+   * RELATÓRIO HIPERPERSONALIZADO
+   * Estrutura: Data de Disparo, Nome do Template, Protocolo, Segmento,
+   * Login do Operador, Número de Saída, CPF do Cliente, Telefone do Cliente,
+   * Finalização, Disparo, Falha, Entrega, Retorno
+   */
+  async getHiperPersonalizadoReport(filters: ReportFilterDto) {
+    const whereClause: any = {};
+
+    if (filters.segment) {
+      whereClause.contactSegment = filters.segment;
+    }
+
+    if (filters.startDate || filters.endDate) {
+      whereClause.dateTime = {};
+      if (filters.startDate) {
+        whereClause.dateTime.gte = new Date(filters.startDate);
+      }
+      if (filters.endDate) {
+        whereClause.dateTime.lte = new Date(filters.endDate);
+      }
+    }
+
+    const campaigns = await this.prisma.campaign.findMany({
+      where: whereClause,
+      orderBy: { dateTime: 'desc' },
+    });
+
+    const segments = await this.prisma.segment.findMany();
+    const segmentMap = new Map(segments.map(s => [s.id, s]));
+
+    const lines = await this.prisma.linesStock.findMany();
+    const lineMap = new Map(lines.map(l => [l.id, l]));
+
+    const users = await this.prisma.user.findMany({
+      where: {
+        line: { not: null },
+      },
+    });
+    const userMap = new Map(
+      users
+        .filter(u => u.line !== null)
+        .map(u => [u.line!, u])
+    );
+
+    const contacts = await this.prisma.contact.findMany();
+    const contactMap = new Map(contacts.map(c => [c.phone, c]));
+
+    // Buscar conversas para verificar retorno e finalização
+    const contactPhones = campaigns.map(c => c.contactPhone);
+    const conversations = await this.prisma.conversation.findMany({
+      where: {
+        contactPhone: { in: contactPhones },
+      },
+    });
+
+    const tabulations = await this.prisma.tabulation.findMany();
+    const tabulationMap = new Map(tabulations.map(t => [t.id, t]));
+
+    const contactConvs: Record<string, { retorno: boolean; tabulation?: number }> = {};
+    conversations.forEach(conv => {
+      if (!contactConvs[conv.contactPhone]) {
+        contactConvs[conv.contactPhone] = { retorno: false };
+      }
+      if (conv.sender === 'contact') {
+        contactConvs[conv.contactPhone].retorno = true;
+      }
+      if (conv.tabulation) {
+        contactConvs[conv.contactPhone].tabulation = conv.tabulation;
+      }
+    });
+
+    const result = campaigns.map(campaign => {
+      const segment = campaign.contactSegment ? segmentMap.get(campaign.contactSegment) : null;
+      const line = campaign.lineReceptor ? lineMap.get(campaign.lineReceptor) : null;
+      const user = line ? userMap.get(line.id) : null;
+      const contact = contactMap.get(campaign.contactPhone);
+      const convData = contactConvs[campaign.contactPhone];
+      const tabulation = convData?.tabulation ? tabulationMap.get(convData.tabulation) : null;
+
+      return {
+        'Data de Disparo': this.formatDate(campaign.createdAt),
+        'Nome do Template': campaign.name,
+        Protocolo: campaign.id,
+        Segmento: segment?.name || null,
+        'Login do Operador': user?.email || null,
+        'Número de Saída': line?.phone || null,
+        'CPF do Cliente': contact?.cpf || null,
+        'Telefone do Cliente': campaign.contactPhone,
+        Finalização: tabulation?.name || null,
+        Disparo: '1',
+        Falha: campaign.retryCount > 0 ? '1' : '0',
+        Entrega: campaign.response ? '1' : '0',
+        Retorno: convData?.retorno ? '1' : '0',
+      };
+    });
+
+    return result;
+  }
 }
