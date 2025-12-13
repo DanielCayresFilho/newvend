@@ -64,6 +64,15 @@
           </select>
         </div>
         <div>
+          <label class="block text-sm font-medium mb-2">Segmento</label>
+          <select v-model="form.segment" class="form-control w-full">
+            <option :value="null">Nenhum</option>
+            <option v-for="seg in segments" :key="seg.id" :value="seg.id">
+              {{ seg.name }}
+            </option>
+          </select>
+        </div>
+        <div>
           <label class="block text-sm font-medium mb-2">Linha WhatsApp</label>
           <select v-model="form.line" class="form-control w-full">
             <option :value="null">Nenhuma</option>
@@ -89,10 +98,11 @@ import api from '../services/api'
 
 const users = ref([])
 const lines = ref([])
+const segments = ref([])
 const search = ref('')
 const showModal = ref(false)
 const editingItem = ref(null)
-const form = ref({ name: '', email: '', password: '', role: 'operator', line: null })
+const form = ref({ name: '', email: '', password: '', role: 'operator', segment: null, line: null })
 
 const columns = [
   { key: 'name', label: 'Nome' },
@@ -111,6 +121,7 @@ const roleLabels = {
 onMounted(async () => {
   await loadUsers()
   await loadLines()
+  await loadSegments()
 })
 
 watch(search, () => loadUsers())
@@ -125,6 +136,11 @@ const loadLines = async () => {
   lines.value = response.data
 }
 
+const loadSegments = async () => {
+  const response = await api.get('/segments')
+  segments.value = response.data
+}
+
 const getLineName = (lineId) => {
   const line = lines.value.find(l => l.id === lineId)
   return line ? line.phone : 'N/A'
@@ -135,7 +151,7 @@ const openModal = (item = null) => {
   if (item) {
     form.value = { ...item, password: '' }
   } else {
-    form.value = { name: '', email: '', password: '', role: 'operator', line: null }
+    form.value = { name: '', email: '', password: '', role: 'operator', segment: null, line: null }
   }
   showModal.value = true
 }

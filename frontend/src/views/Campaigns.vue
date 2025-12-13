@@ -56,6 +56,38 @@
               class="form-control w-full"
               placeholder="Digite a mensagem que será enviada para todos os contatos..."
             ></textarea>
+            <p class="text-xs text-gray-500 mt-1">Deixe em branco se for usar template</p>
+          </div>
+
+          <div class="p-4 bg-primary/5 rounded-lg border border-primary/20">
+            <div class="flex items-center space-x-2 mb-3">
+              <input
+                v-model="form.useTemplate"
+                type="checkbox"
+                id="useTemplate"
+                class="w-4 h-4"
+              />
+              <label for="useTemplate" class="text-sm font-medium">Usar Template (Para linhas oficiais)</label>
+            </div>
+
+            <div v-if="form.useTemplate" class="space-y-3">
+              <div>
+                <label class="block text-sm font-medium mb-2">Template</label>
+                <select v-model="form.templateId" class="form-control w-full">
+                  <option value="">Selecione um template</option>
+                  <option v-for="template in templates" :key="template.id" :value="template.id">
+                    {{ template.name }} ({{ template.status }})
+                  </option>
+                </select>
+              </div>
+              <div v-if="selectedTemplate && selectedTemplate.variables && selectedTemplate.variables.length > 0">
+                <label class="block text-sm font-medium mb-2">Variáveis do Template</label>
+                <p class="text-xs text-gray-500 mb-2">
+                  As variáveis serão preenchidas automaticamente com dados do CSV, ou você pode definir valores padrão abaixo.
+                  No CSV, adicione colunas com os nomes das variáveis: {{ selectedTemplate.variables.join(', ') }}
+                </p>
+              </div>
+            </div>
           </div>
 
           <div class="flex items-center space-x-4">
@@ -197,12 +229,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import Layout from '../components/layout/Layout.vue'
 import api from '../services/api'
 
 const segments = ref([])
 const campaigns = ref([])
+const templates = ref([])
 const selectedFile = ref(null)
 const fileInput = ref(null)
 const loading = ref(false)
@@ -216,6 +249,8 @@ const form = ref({
   segment: '',
   speed: 'medium',
   message: '',
+  useTemplate: false,
+  templateId: null,
 })
 
 const speedLabels = {
@@ -224,13 +259,20 @@ const speedLabels = {
   slow: 'Lenta',
 }
 
+const selectedTemplate = computed(() => {
+  if (!form.value.templateId) return null
+  return templates.value.find(t => t.id === form.value.templateId)
+})
+
 onMounted(async () => {
-  const [segResponse, campResponse] = await Promise.all([
+  const [segResponse, campResponse, templatesResponse] = await Promise.all([
     api.get('/segments'),
-    api.get('/campaigns')
+    api.get('/campaigns'),
+    api.get('/templates', { params: { status: 'APPROVED' } })
   ])
   segments.value = segResponse.data
   campaigns.value = campResponse.data
+  templates.value = templatesResponse.data
 })
 
 const handleFileChange = (event) => {
@@ -260,6 +302,10 @@ const createCampaign = async () => {
     if (form.value.message) {
       formData.append('message', form.value.message)
     }
+    if (form.value.useTemplate && form.value.templateId) {
+      formData.append('useTemplate', 'true')
+      formData.append('templateId', form.value.templateId.toString())
+    }
 
     const uploadResponse = await api.post(
       `/campaigns/${campaignResponse.data.id}/upload`,
@@ -279,6 +325,8 @@ const createCampaign = async () => {
       segment: '',
       speed: 'medium',
       message: '',
+      useTemplate: false,
+      templateId: null,
     }
     selectedFile.value = null
     if (fileInput.value) {

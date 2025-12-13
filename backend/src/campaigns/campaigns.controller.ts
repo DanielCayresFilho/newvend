@@ -27,6 +27,8 @@ export class CampaignsController {
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
     @Body('message') message?: string,
+    @Body('useTemplate') useTemplate?: string,
+    @Body('templateId') templateId?: string,
   ) {
     if (!file) {
       throw new BadRequestException('Arquivo CSV é obrigatório');
@@ -49,7 +51,13 @@ export class CampaignsController {
         })
         .on('end', async () => {
           try {
-            const result = await this.campaignsService.uploadCampaign(+id, contacts, message);
+            const result = await this.campaignsService.uploadCampaign(
+              +id,
+              contacts,
+              message,
+              useTemplate === 'true',
+              templateId ? parseInt(templateId) : undefined,
+            );
             resolve(result);
           } catch (error) {
             reject(error);

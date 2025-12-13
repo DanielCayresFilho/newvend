@@ -89,6 +89,24 @@
               <span>Blocklist</span>
             </router-link>
           </li>
+          <li>
+            <router-link
+              to="/templates"
+              :class="['nav-link', isActive('/templates') && 'nav-link-active']"
+            >
+              <i class="fas fa-file-alt text-primary w-5"></i>
+              <span>Templates</span>
+            </router-link>
+          </li>
+          <li>
+            <router-link
+              to="/reports"
+              :class="['nav-link', isActive('/reports') && 'nav-link-active']"
+            >
+              <i class="fas fa-chart-bar text-success w-5"></i>
+              <span>Relatórios</span>
+            </router-link>
+          </li>
         </ul>
       </div>
 
@@ -166,6 +184,42 @@
             >
               <i class="fas fa-users text-warning w-5"></i>
               <span>Usuários</span>
+            </router-link>
+          </li>
+          <li>
+            <router-link
+              to="/tags"
+              :class="['nav-link', isActive('/tags') && 'nav-link-active']"
+            >
+              <i class="fas fa-tags text-secondary w-5"></i>
+              <span>Tags</span>
+            </router-link>
+          </li>
+          <li>
+            <router-link
+              to="/templates"
+              :class="['nav-link', isActive('/templates') && 'nav-link-active']"
+            >
+              <i class="fas fa-file-alt text-primary w-5"></i>
+              <span>Templates</span>
+            </router-link>
+          </li>
+          <li>
+            <router-link
+              to="/reports"
+              :class="['nav-link', isActive('/reports') && 'nav-link-active']"
+            >
+              <i class="fas fa-chart-bar text-success w-5"></i>
+              <span>Relatórios</span>
+            </router-link>
+          </li>
+          <li>
+            <router-link
+              to="/api-logs"
+              :class="['nav-link', isActive('/api-logs') && 'nav-link-active']"
+            >
+              <i class="fas fa-code text-error w-5"></i>
+              <span>Logs API</span>
             </router-link>
           </li>
         </ul>

@@ -33,7 +33,13 @@ export class CampaignsService {
     });
   }
 
-  async uploadCampaign(campaignId: number, contacts: CampaignContact[], message?: string) {
+  async uploadCampaign(
+    campaignId: number,
+    contacts: CampaignContact[],
+    message?: string,
+    useTemplate?: boolean,
+    templateId?: number,
+  ) {
     const campaign = await this.prisma.campaign.findUnique({
       where: { id: campaignId },
     });
@@ -61,6 +67,10 @@ export class CampaignsService {
     }
 
     const delayMs = delayMinutes * 60 * 1000;
+
+    // Usar parâmetros do upload ou da campanha
+    const finalUseTemplate = useTemplate !== undefined ? useTemplate : (campaign.useTemplate || false);
+    const finalTemplateId = templateId !== undefined ? templateId : campaign.templateId;
 
     // Criar contatos e agendar envios
     for (let i = 0; i < contacts.length; i++) {
@@ -92,8 +102,8 @@ export class CampaignsService {
           lineReceptor: operator.line,
           speed: campaign.speed,
           response: false,
-          useTemplate: campaign.useTemplate || false,
-          templateId: campaign.templateId,
+          useTemplate: finalUseTemplate,
+          templateId: finalTemplateId,
           templateVariables: campaign.templateVariables,
         },
       });
@@ -109,8 +119,8 @@ export class CampaignsService {
           contactSegment: campaign.contactSegment,
           lineId: operator.line,
           message,
-          useTemplate: campaign.useTemplate || false,
-          templateId: campaign.templateId,
+          useTemplate: finalUseTemplate,
+          templateId: finalTemplateId,
           templateVariables: campaign.templateVariables,
         },
         {

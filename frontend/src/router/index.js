@@ -74,6 +74,30 @@ const routes = [
     component: () => import('../views/Lines.vue'),
     meta: { requiresAuth: true, roles: ['admin'] },
   },
+  {
+    path: '/tags',
+    name: 'Tags',
+    component: () => import('../views/Tags.vue'),
+    meta: { requiresAuth: true, roles: ['admin'] },
+  },
+  {
+    path: '/templates',
+    name: 'Templates',
+    component: () => import('../views/Templates.vue'),
+    meta: { requiresAuth: true, roles: ['admin', 'supervisor'] },
+  },
+  {
+    path: '/reports',
+    name: 'Reports',
+    component: () => import('../views/Reports.vue'),
+    meta: { requiresAuth: true, roles: ['admin', 'supervisor'] },
+  },
+  {
+    path: '/api-logs',
+    name: 'ApiLogs',
+    component: () => import('../views/ApiLogs.vue'),
+    meta: { requiresAuth: true, roles: ['admin'] },
+  },
 ]
 
 const router = createRouter({

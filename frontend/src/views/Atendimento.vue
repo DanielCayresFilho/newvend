@@ -125,26 +125,58 @@
 
         <!-- Área de entrada de mensagem -->
         <div class="bg-white/85 backdrop-blur border-t border-borderColor/60 p-4">
+          <div v-if="useTemplate" class="mb-3 p-3 bg-primary/10 rounded-lg">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-sm font-medium">Enviando Template</span>
+              <button @click="useTemplate = false" class="text-xs text-primary hover:underline">
+                Cancelar
+              </button>
+            </div>
+            <select v-model="selectedTemplate" class="form-control w-full mb-2">
+              <option value="">Selecione um template</option>
+              <option v-for="template in availableTemplates" :key="template.id" :value="template.id">
+                {{ template.name }}
+              </option>
+            </select>
+            <div v-if="selectedTemplateObj && selectedTemplateObj.variables && selectedTemplateObj.variables.length > 0" class="space-y-2">
+              <div v-for="(varName, index) in selectedTemplateObj.variables" :key="index" class="flex items-center space-x-2">
+                <label class="text-xs w-24">{{ varName }}:</label>
+                <input
+                  v-model="templateVariables[varName]"
+                  type="text"
+                  class="input-soft flex-1 px-3 py-1 text-sm"
+                  :placeholder="`Valor para ${varName}`"
+                />
+              </div>
+            </div>
+          </div>
+          
           <form @submit.prevent="sendMessage" class="flex items-center space-x-3">
-            <button type="button" class="p-2 rounded-lg hover:bg-gray-100 transition-colors">
-              <i class="fas fa-paperclip text-textSecondary"></i>
+            <button
+              type="button"
+              @click="toggleTemplateMode"
+              class="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              :class="{ 'bg-primary text-white': useTemplate }"
+            >
+              <i class="fas fa-file-alt text-textSecondary" :class="{ 'text-white': useTemplate }"></i>
             </button>
 
             <div class="flex-1 relative">
               <input
                 v-model="messageText"
                 type="text"
-                placeholder="Digite sua mensagem..."
+                :placeholder="useTemplate ? 'Use o template acima...' : 'Digite sua mensagem...'"
                 class="input-soft w-full px-4 py-3"
+                :disabled="useTemplate"
               />
             </div>
 
             <button
               type="submit"
-              :disabled="!messageText.trim()"
+              :disabled="useTemplate ? !selectedTemplate : !messageText.trim()"
               class="btn-primary px-5 py-3 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <i class="fas fa-paper-plane"></i>
+              <i :class="useTemplate ? 'fas fa-paper-plane' : 'fas fa-paper-plane'"></i>
             </button>
           </form>
         </div>
@@ -228,6 +260,10 @@ const selectedTabulation = ref('')
 const tabulations = ref([])
 const showNewChatModal = ref(false)
 const messagesContainer = ref(null)
+const useTemplate = ref(false)
+const selectedTemplate = ref(null)
+const availableTemplates = ref([])
+const templateVariables = ref({})
 
 const newChat = ref({
   name: '',
@@ -243,8 +279,11 @@ onMounted(async () => {
   await conversationsStore.fetchActiveConversations()
 
   // Buscar tabulações
-  const response = await api.get('/tabulations')
-  tabulations.value = response.data
+  const tabResponse = await api.get('/tabulations')
+  tabulations.value = tabResponse.data
+
+  // Buscar templates disponíveis
+  await loadTemplates()
 })
 
 const selectConversation = async (conv) => {
@@ -254,17 +293,71 @@ const selectConversation = async (conv) => {
   scrollToBottom()
 }
 
+const loadTemplates = async () => {
+  try {
+    const response = await api.get('/templates', { params: { status: 'APPROVED' } })
+    availableTemplates.value = response.data
+  } catch (error) {
+    console.error('Erro ao carregar templates:', error)
+  }
+}
+
+const toggleTemplateMode = () => {
+  useTemplate.value = !useTemplate.value
+  if (!useTemplate.value) {
+    selectedTemplate.value = null
+    templateVariables.value = {}
+  }
+}
+
+const selectedTemplateObj = computed(() => {
+  if (!selectedTemplate.value) return null
+  return availableTemplates.value.find(t => t.id === selectedTemplate.value)
+})
+
 const sendMessage = async () => {
-  if (!messageText.value.trim() || !currentConversation.value) return
+  if (!currentConversation.value) return
 
-  await conversationsStore.sendMessage(
-    currentConversation.value.contactPhone,
-    messageText.value
-  )
+  try {
+    if (useTemplate.value && selectedTemplate.value) {
+      // Enviar template
+      const variables = selectedTemplateObj.value?.variables?.map(varName => ({
+        key: varName,
+        value: templateVariables.value[varName] || '',
+      })) || []
 
-  messageText.value = ''
-  await nextTick()
-  scrollToBottom()
+      await api.post('/templates/send', {
+        templateId: selectedTemplate.value,
+        phone: currentConversation.value.contactPhone,
+        contactName: currentConversation.value.contactName,
+        variables: variables,
+        lineId: authStore.user?.line,
+      })
+
+      // Resetar template
+      useTemplate.value = false
+      selectedTemplate.value = null
+      templateVariables.value = {}
+      
+      // Recarregar conversas
+      await conversationsStore.fetchActiveConversations()
+    } else {
+      // Enviar mensagem normal
+      if (!messageText.value.trim()) return
+
+      await conversationsStore.sendMessage(
+        currentConversation.value.contactPhone,
+        messageText.value
+      )
+
+      messageText.value = ''
+    }
+
+    await nextTick()
+    scrollToBottom()
+  } catch (error) {
+    alert('Erro ao enviar mensagem: ' + (error.response?.data?.message || error.message))
+  }
 }
 
 const handleTabulation = async () => {
