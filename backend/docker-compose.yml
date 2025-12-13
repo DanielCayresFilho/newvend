@@ -52,6 +52,7 @@ services:
       APP_URL: ${APP_URL:-http://localhost:3000}
       REDIS_HOST: ${REDIS_HOST:-redis}
       REDIS_PORT: ${REDIS_PORT:-6379}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:3001}
     ports:
       - "${PORT:-3000}:3000"
     depends_on:

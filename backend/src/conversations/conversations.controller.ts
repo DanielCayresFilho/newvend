@@ -27,8 +27,16 @@ export class ConversationsController {
   }
 
   @Get('active')
-  @Roles(Role.operator)
+  @Roles(Role.admin, Role.supervisor, Role.operator)
   getActiveConversations(@CurrentUser() user: any) {
+    // Admin e Supervisor podem ver todas as conversas ativas
+    // Operator só vê as conversas da sua linha
+    if (user.role === 'admin') {
+      return this.conversationsService.findAll({ tabulation: null });
+    }
+    if (user.role === 'supervisor') {
+      return this.conversationsService.findAll({ segment: user.segment, tabulation: null });
+    }
     return this.conversationsService.findActiveConversations(user.line);
   }
 

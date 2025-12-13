@@ -275,16 +275,25 @@ export class LinesService {
       const instanceName = `line_${line.phone.replace(/\D/g, '')}`;
       
       // Primeiro, verificar o status da conexão
-      const connectionResponse = await axios.get(
-        `${evolution.evolutionUrl}/instance/connectionState/${instanceName}`,
-        {
-          headers: {
-            'apikey': evolution.evolutionKey,
-          },
-        }
-      );
+      try {
+        const connectionResponse = await axios.get(
+          `${evolution.evolutionUrl}/instance/connectionState/${instanceName}`,
+          {
+            headers: {
+              'apikey': evolution.evolutionKey,
+            },
+          }
+        );
 
-      console.log('Status da conexão:', connectionResponse.data);
+        console.log('Status da conexão:', connectionResponse.data);
+        
+        // Se já está conectado, não precisa de QR Code
+        if (connectionResponse.data?.state === 'open' || connectionResponse.data?.instance?.state === 'open') {
+          return { qrcode: null, connected: true, message: 'Linha já está conectada' };
+        }
+      } catch (connError) {
+        console.log('Não foi possível verificar status da conexão, continuando...');
+      }
 
       // Buscar o QR Code
       const response = await axios.get(
@@ -296,7 +305,44 @@ export class LinesService {
         }
       );
 
-      return response.data;
+      console.log('Resposta do QR Code:', JSON.stringify(response.data, null, 2));
+
+      // Normalizar a resposta para o formato esperado pelo frontend
+      // A Evolution API pode retornar em diferentes formatos
+      let qrcode = null;
+      
+      if (response.data?.base64) {
+        // Formato: { base64: "data:image/png;base64,..." }
+        qrcode = response.data.base64;
+      } else if (response.data?.qrcode?.base64) {
+        // Formato: { qrcode: { base64: "..." } }
+        qrcode = response.data.qrcode.base64;
+      } else if (response.data?.code) {
+        // Formato: { code: "texto do qr" } - precisa gerar imagem
+        qrcode = response.data.code;
+      } else if (typeof response.data === 'string' && response.data.startsWith('data:image')) {
+        // Formato: string base64 direto
+        qrcode = response.data;
+      } else if (response.data?.pairingCode) {
+        // Pairing code para WhatsApp Web
+        return { 
+          qrcode: null, 
+          pairingCode: response.data.pairingCode,
+          message: 'Use o código de pareamento' 
+        };
+      }
+
+      if (!qrcode) {
+        console.warn('Formato de resposta não reconhecido:', response.data);
+        // Retornar os dados brutos para debug
+        return { 
+          qrcode: null, 
+          rawData: response.data,
+          message: 'QR Code não disponível no momento. Verifique se a instância está pronta.' 
+        };
+      }
+
+      return { qrcode };
     } catch (error) {
       console.error('Erro ao obter QR Code:', error.response?.data || error.message);
       

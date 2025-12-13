@@ -1,0 +1,140 @@
+import { useState } from "react";
+import { 
+  Headphones, 
+  Eye, 
+  BookUser, 
+  Megaphone, 
+  Table2, 
+  Filter, 
+  Ban, 
+  FileText, 
+  BarChart3,
+  RefreshCw,
+  Phone,
+  Users,
+  Tags,
+  Code,
+  LogOut,
+  Settings
+} from "lucide-react";
+import { useLocation, Link } from "react-router-dom";
+import { cn } from "@/lib/utils";
+import { VendLogo } from "./VendLogo";
+import { useAuth } from "@/contexts/AuthContext";
+import { UserRole } from "@/types/auth";
+import { NotificationSettingsDialog } from "@/components/settings/NotificationSettingsDialog";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
+
+interface MenuItem {
+  title: string;
+  url: string;
+  icon: React.ElementType;
+  color: string;
+  roles: UserRole[];
+}
+
+const menuItems: MenuItem[] = [
+  { title: "Atendimento", url: "/atendimento", icon: Headphones, color: "text-cyan", roles: ['operador', 'supervisor', 'admin'] },
+  { title: "Supervisionar", url: "/supervisionar", icon: Eye, color: "text-warning", roles: ['supervisor', 'admin'] },
+  { title: "Contatos", url: "/contatos", icon: BookUser, color: "text-cyan", roles: ['supervisor', 'admin'] },
+  { title: "Campanhas", url: "/campanhas", icon: Megaphone, color: "text-primary", roles: ['supervisor', 'admin'] },
+  { title: "Tabulações", url: "/tabulacoes", icon: Table2, color: "text-whatsapp", roles: ['supervisor', 'admin'] },
+  { title: "Segmentos", url: "/segmentos", icon: Filter, color: "text-destructive", roles: ['supervisor', 'admin'] },
+  { title: "Blocklist", url: "/blocklist", icon: Ban, color: "text-muted-foreground", roles: ['supervisor', 'admin'] },
+  { title: "Templates", url: "/templates", icon: FileText, color: "text-primary", roles: ['supervisor', 'admin'] },
+  { title: "Relatórios", url: "/relatorios", icon: BarChart3, color: "text-success", roles: ['supervisor', 'admin'] },
+  { title: "Evolution", url: "/evolution", icon: RefreshCw, color: "text-primary", roles: ['admin'] },
+  { title: "Linhas", url: "/linhas", icon: Phone, color: "text-whatsapp", roles: ['admin'] },
+  { title: "Usuários", url: "/usuarios", icon: Users, color: "text-warning", roles: ['admin'] },
+  { title: "Tags", url: "/tags", icon: Tags, color: "text-cyan", roles: ['admin'] },
+  { title: "Logs API", url: "/logs", icon: Code, color: "text-destructive", roles: ['admin'] },
+];
+
+export function AppSidebar() {
+  const location = useLocation();
+  const { user, logout } = useAuth();
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  
+  if (!user) return null;
+
+  const filteredItems = menuItems.filter(item => item.roles.includes(user.role));
+  const initials = user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  
+  const roleLabels: Record<UserRole, string> = {
+    admin: 'Administrador',
+    supervisor: 'Supervisor',
+    operador: 'Operador'
+  };
+
+  return (
+    <>
+      <aside className="w-64 min-h-screen bg-sidebar flex flex-col">
+        {/* Logo */}
+        <div className="p-6 border-b border-sidebar-border">
+          <VendLogo />
+        </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 p-4 overflow-y-auto">
+          <ul className="space-y-1">
+            {filteredItems.map((item) => {
+              const isActive = location.pathname === item.url;
+              const Icon = item.icon;
+              
+              return (
+                <li key={item.url}>
+                  <Link
+                    to={item.url}
+                    className={cn(
+                      "flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200",
+                      "hover:bg-sidebar-accent/20",
+                      isActive && "bg-gradient-to-r from-primary/20 to-cyan/10 text-sidebar-foreground"
+                    )}
+                  >
+                    <Icon className={cn("w-5 h-5", item.color)} />
+                    <span className="text-sm font-medium text-sidebar-foreground">
+                      {item.title}
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+
+        {/* User Profile */}
+        <div className="p-4 border-t border-sidebar-border">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-cyan flex items-center justify-center">
+              <span className="text-sm font-bold text-primary-foreground">{initials}</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-sidebar-foreground truncate">{user.name}</p>
+              <p className="text-xs text-muted-foreground">{roleLabels[user.role]}</p>
+            </div>
+            <ThemeToggle />
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="p-2 rounded-lg hover:bg-sidebar-accent/20 transition-colors"
+              title="Configurações"
+            >
+              <Settings className="w-4 h-4 text-muted-foreground" />
+            </button>
+            <button
+              onClick={logout}
+              className="p-2 rounded-lg hover:bg-sidebar-accent/20 transition-colors"
+              title="Sair"
+            >
+              <LogOut className="w-4 h-4 text-muted-foreground" />
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      <NotificationSettingsDialog 
+        open={isSettingsOpen} 
+        onOpenChange={setIsSettingsOpen} 
+      />
+    </>
+  );
+}

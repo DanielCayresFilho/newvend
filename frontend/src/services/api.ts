@@ -1,0 +1,806 @@
+// API Configuration
+const API_BASE_URL = 'https://api.newvend.taticamarketing.com.br';
+
+// Token management
+let authToken: string | null = null;
+
+export const setAuthToken = (token: string | null) => {
+  authToken = token;
+  if (token) {
+    localStorage.setItem('vend_token', token);
+  } else {
+    localStorage.removeItem('vend_token');
+  }
+};
+
+export const getAuthToken = (): string | null => {
+  if (authToken) return authToken;
+  return localStorage.getItem('vend_token');
+};
+
+// API Request helper
+async function apiRequest<T>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const token = getAuthToken();
+  
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  };
+
+  if (token) {
+    (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...options,
+    headers,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Erro na requisição' }));
+    throw new Error(error.message || `HTTP error ${response.status}`);
+  }
+
+  return response.json();
+}
+
+// ==================== AUTH ====================
+export interface LoginResponse {
+  access_token: string;
+  user: {
+    id: number;
+    name: string;
+    email: string;
+    role: 'admin' | 'supervisor' | 'operator';
+    segment: number | null;
+    line: number | null;
+    status: 'Online' | 'Offline';
+  };
+}
+
+export const authService = {
+  login: async (email: string, password: string): Promise<LoginResponse> => {
+    const response = await apiRequest<LoginResponse>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+    setAuthToken(response.access_token);
+    return response;
+  },
+
+  logout: async (): Promise<void> => {
+    try {
+      await apiRequest('/auth/logout', { method: 'POST' });
+    } finally {
+      setAuthToken(null);
+    }
+  },
+
+  me: async () => {
+    return apiRequest<LoginResponse['user']>('/auth/me');
+  },
+};
+
+// ==================== USERS ====================
+export interface User {
+  id: number;
+  name: string;
+  email: string;
+  role: 'admin' | 'supervisor' | 'operator';
+  segment: number | null;
+  line: number | null;
+  status: 'Online' | 'Offline';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateUserData {
+  name: string;
+  email: string;
+  password: string;
+  role: 'admin' | 'supervisor' | 'operator';
+  segment?: number;
+  line?: number;
+  status?: 'Online' | 'Offline';
+}
+
+export interface UpdateUserData {
+  name?: string;
+  email?: string;
+  password?: string;
+  role?: 'admin' | 'supervisor' | 'operator';
+  segment?: number | null;
+  line?: number | null;
+  status?: 'Online' | 'Offline';
+}
+
+export const usersService = {
+  list: async (params?: { role?: string; segment?: number; status?: string }): Promise<User[]> => {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>)}` : '';
+    return apiRequest<User[]>(`/users${query}`);
+  },
+
+  getOnlineOperators: async (segment?: number): Promise<User[]> => {
+    const query = segment ? `?segment=${segment}` : '';
+    return apiRequest<User[]>(`/users/online-operators${query}`);
+  },
+
+  getById: async (id: number): Promise<User> => {
+    return apiRequest<User>(`/users/${id}`);
+  },
+
+  create: async (data: CreateUserData): Promise<User> => {
+    return apiRequest<User>('/users', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  update: async (id: number, data: UpdateUserData): Promise<User> => {
+    return apiRequest<User>(`/users/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await apiRequest(`/users/${id}`, { method: 'DELETE' });
+  },
+};
+
+// ==================== SEGMENTS ====================
+export interface Segment {
+  id: number;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const segmentsService = {
+  list: async (search?: string): Promise<Segment[]> => {
+    const query = search ? `?search=${encodeURIComponent(search)}` : '';
+    return apiRequest<Segment[]>(`/segments${query}`);
+  },
+
+  getById: async (id: number): Promise<Segment> => {
+    return apiRequest<Segment>(`/segments/${id}`);
+  },
+
+  create: async (name: string): Promise<Segment> => {
+    return apiRequest<Segment>('/segments', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+  },
+
+  update: async (id: number, name: string): Promise<Segment> => {
+    return apiRequest<Segment>(`/segments/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    });
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await apiRequest(`/segments/${id}`, { method: 'DELETE' });
+  },
+};
+
+// ==================== LINES ====================
+export interface Line {
+  id: number;
+  phone: string;
+  lineStatus: 'active' | 'ban';
+  segment: number | null;
+  linkedTo: number | null;
+  evolutionName: string;
+  oficial: boolean;
+  token?: string | null;
+  businessID?: string | null;
+  numberId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateLineData {
+  phone: string;
+  evolutionName: string;
+  segment?: number;
+  oficial?: boolean;
+  lineStatus?: 'active' | 'ban';
+  linkedTo?: number;
+  token?: string;
+  businessID?: string;
+  numberId?: string;
+}
+
+export const linesService = {
+  list: async (params?: { segment?: number; lineStatus?: string; evolutionName?: string }): Promise<Line[]> => {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>)}` : '';
+    return apiRequest<Line[]>(`/lines${query}`);
+  },
+
+  getById: async (id: number): Promise<Line> => {
+    return apiRequest<Line>(`/lines/${id}`);
+  },
+
+  getEvolutions: async (): Promise<Array<{ id: number; evolutionName: string; evolutionUrl: string }>> => {
+    return apiRequest('/lines/evolutions');
+  },
+
+  getInstances: async (evolutionName: string): Promise<Array<{ instanceName: string; status: string }>> => {
+    return apiRequest(`/lines/instances/${evolutionName}`);
+  },
+
+  getAvailable: async (segment: number): Promise<Line[]> => {
+    return apiRequest<Line[]>(`/lines/available/${segment}`);
+  },
+
+  getQrCode: async (id: number): Promise<{ 
+    qrcode: string | null; 
+    connected?: boolean; 
+    pairingCode?: string;
+    message?: string;
+  }> => {
+    return apiRequest(`/lines/${id}/qrcode`);
+  },
+
+  create: async (data: CreateLineData): Promise<Line> => {
+    return apiRequest<Line>('/lines', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  update: async (id: number, data: Partial<CreateLineData>): Promise<Line> => {
+    return apiRequest<Line>(`/lines/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  ban: async (id: number): Promise<void> => {
+    await apiRequest(`/lines/${id}/ban`, { method: 'POST' });
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await apiRequest(`/lines/${id}`, { method: 'DELETE' });
+  },
+};
+
+// ==================== CONTACTS ====================
+export interface Contact {
+  id: number;
+  name: string;
+  phone: string;
+  segment: number | null;
+  cpf?: string;
+  contract?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateContactData {
+  name: string;
+  phone: string;
+  segment?: number;
+  cpf?: string;
+  contract?: string;
+}
+
+export const contactsService = {
+  list: async (params?: { search?: string; segment?: number }): Promise<Contact[]> => {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>)}` : '';
+    return apiRequest<Contact[]>(`/contacts${query}`);
+  },
+
+  getById: async (id: number): Promise<Contact> => {
+    return apiRequest<Contact>(`/contacts/${id}`);
+  },
+
+  create: async (data: CreateContactData): Promise<Contact> => {
+    return apiRequest<Contact>('/contacts', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  update: async (id: number, data: Partial<CreateContactData>): Promise<Contact> => {
+    return apiRequest<Contact>(`/contacts/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await apiRequest(`/contacts/${id}`, { method: 'DELETE' });
+  },
+};
+
+// ==================== CAMPAIGNS ====================
+export interface Campaign {
+  id: number;
+  name: string;
+  contactName: string;
+  contactPhone: string;
+  contactSegment: number;
+  dateTime: string;
+  lineReceptor: number;
+  response: boolean;
+  speed: 'fast' | 'medium' | 'slow';
+  retryCount: number;
+  createdAt: string;
+}
+
+export interface CampaignStats {
+  campaignName: string;
+  totalContacts: number;
+  sent: number;
+  responses: number;
+  pending: number;
+}
+
+export interface CreateCampaignData {
+  name: string;
+  speed: 'fast' | 'medium' | 'slow';
+  segment: string;
+  useTemplate?: boolean;
+  templateId?: number;
+  templateVariables?: Array<{ key: string; value: string }>;
+}
+
+export const campaignsService = {
+  list: async (): Promise<Campaign[]> => {
+    return apiRequest<Campaign[]>('/campaigns');
+  },
+
+  getById: async (id: number): Promise<Campaign> => {
+    return apiRequest<Campaign>(`/campaigns/${id}`);
+  },
+
+  getStats: async (name: string): Promise<CampaignStats> => {
+    return apiRequest<CampaignStats>(`/campaigns/stats/${encodeURIComponent(name)}`);
+  },
+
+  create: async (data: CreateCampaignData): Promise<Campaign> => {
+    return apiRequest<Campaign>('/campaigns', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  uploadCSV: async (id: number, file: File, message?: string): Promise<{ contactsAdded: number }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (message) formData.append('message', message);
+
+    const token = getAuthToken();
+    const response = await fetch(`${API_BASE_URL}/campaigns/${id}/upload`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Erro no upload' }));
+      throw new Error(error.message);
+    }
+
+    return response.json();
+  },
+};
+
+// ==================== CONVERSATIONS ====================
+export interface Conversation {
+  id: number;
+  contactName: string;
+  contactPhone: string;
+  segment: number | null;
+  userName: string | null;
+  userLine: number | null;
+  message: string;
+  sender: 'operator' | 'contact';
+  datetime: string;
+  tabulation: number | null;
+  messageType: 'text' | 'image' | 'video' | 'audio' | 'document';
+  mediaUrl: string | null;
+  createdAt: string;
+}
+
+export interface CreateConversationData {
+  contactName: string;
+  contactPhone: string;
+  segment?: number;
+  userName?: string;
+  userLine?: number;
+  message: string;
+  sender: 'operator' | 'contact';
+  tabulation?: number | null;
+  messageType?: 'text' | 'image' | 'video' | 'audio' | 'document';
+  mediaUrl?: string | null;
+}
+
+export const conversationsService = {
+  list: async (params?: { segment?: number; userLine?: number; contactPhone?: string }): Promise<Conversation[]> => {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>)}` : '';
+    return apiRequest<Conversation[]>(`/conversations${query}`);
+  },
+
+  getActive: async (): Promise<Conversation[]> => {
+    return apiRequest<Conversation[]>('/conversations/active');
+  },
+
+  getBySegment: async (segment: number, tabulated?: boolean): Promise<Array<{ contactPhone: string; contactName: string; messages: Conversation[] }>> => {
+    const query = tabulated !== undefined ? `?tabulated=${tabulated}` : '';
+    return apiRequest(`/conversations/segment/${segment}${query}`);
+  },
+
+  getByContact: async (phone: string, tabulated?: boolean): Promise<Conversation[]> => {
+    const query = tabulated !== undefined ? `?tabulated=${tabulated}` : '';
+    return apiRequest<Conversation[]>(`/conversations/contact/${encodeURIComponent(phone)}${query}`);
+  },
+
+  getById: async (id: number): Promise<Conversation> => {
+    return apiRequest<Conversation>(`/conversations/${id}`);
+  },
+
+  create: async (data: CreateConversationData): Promise<Conversation> => {
+    return apiRequest<Conversation>('/conversations', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  update: async (id: number, data: Partial<CreateConversationData>): Promise<Conversation> => {
+    return apiRequest<Conversation>(`/conversations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  tabulate: async (phone: string, tabulationId: number): Promise<void> => {
+    await apiRequest(`/conversations/tabulate/${encodeURIComponent(phone)}`, {
+      method: 'POST',
+      body: JSON.stringify({ tabulationId }),
+    });
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await apiRequest(`/conversations/${id}`, { method: 'DELETE' });
+  },
+};
+
+// ==================== TABULATIONS ====================
+export interface Tabulation {
+  id: number;
+  name: string;
+  isCPC: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const tabulationsService = {
+  list: async (search?: string): Promise<Tabulation[]> => {
+    const query = search ? `?search=${encodeURIComponent(search)}` : '';
+    return apiRequest<Tabulation[]>(`/tabulations${query}`);
+  },
+
+  getById: async (id: number): Promise<Tabulation> => {
+    return apiRequest<Tabulation>(`/tabulations/${id}`);
+  },
+
+  create: async (name: string, isCPC: boolean = false): Promise<Tabulation> => {
+    return apiRequest<Tabulation>('/tabulations', {
+      method: 'POST',
+      body: JSON.stringify({ name, isCPC }),
+    });
+  },
+
+  update: async (id: number, data: { name?: string; isCPC?: boolean }): Promise<Tabulation> => {
+    return apiRequest<Tabulation>(`/tabulations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await apiRequest(`/tabulations/${id}`, { method: 'DELETE' });
+  },
+};
+
+// ==================== BLOCKLIST ====================
+export interface BlocklistEntry {
+  id: number;
+  name?: string;
+  phone?: string;
+  cpf?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const blocklistService = {
+  list: async (search?: string): Promise<BlocklistEntry[]> => {
+    const query = search ? `?search=${encodeURIComponent(search)}` : '';
+    return apiRequest<BlocklistEntry[]>(`/blocklist${query}`);
+  },
+
+  check: async (params: { phone?: string; cpf?: string }): Promise<{ blocked: boolean }> => {
+    const query = `?${new URLSearchParams(params as Record<string, string>)}`;
+    return apiRequest(`/blocklist/check${query}`);
+  },
+
+  getById: async (id: number): Promise<BlocklistEntry> => {
+    return apiRequest<BlocklistEntry>(`/blocklist/${id}`);
+  },
+
+  create: async (data: { name?: string; phone?: string; cpf?: string }): Promise<BlocklistEntry> => {
+    return apiRequest<BlocklistEntry>('/blocklist', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  update: async (id: number, data: { name?: string; phone?: string }): Promise<BlocklistEntry> => {
+    return apiRequest<BlocklistEntry>(`/blocklist/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await apiRequest(`/blocklist/${id}`, { method: 'DELETE' });
+  },
+};
+
+// ==================== EVOLUTION ====================
+export interface Evolution {
+  id: number;
+  evolutionName: string;
+  evolutionUrl: string;
+  evolutionKey: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const evolutionService = {
+  list: async (): Promise<Evolution[]> => {
+    return apiRequest<Evolution[]>('/evolution');
+  },
+
+  getById: async (id: number): Promise<Evolution> => {
+    return apiRequest<Evolution>(`/evolution/${id}`);
+  },
+
+  create: async (data: { evolutionName: string; evolutionUrl: string; evolutionKey: string }): Promise<Evolution> => {
+    return apiRequest<Evolution>('/evolution', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  update: async (id: number, data: { evolutionUrl?: string; evolutionKey?: string }): Promise<Evolution> => {
+    return apiRequest<Evolution>(`/evolution/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await apiRequest(`/evolution/${id}`, { method: 'DELETE' });
+  },
+
+  test: async (name: string): Promise<{ status: string; message: string }> => {
+    return apiRequest(`/evolution/test/${encodeURIComponent(name)}`);
+  },
+};
+
+// ==================== TAGS ====================
+export interface Tag {
+  id: number;
+  name: string;
+  description?: string;
+  segment: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const tagsService = {
+  list: async (params?: { search?: string; segment?: number }): Promise<Tag[]> => {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>)}` : '';
+    return apiRequest<Tag[]>(`/tags${query}`);
+  },
+
+  getById: async (id: number): Promise<Tag> => {
+    return apiRequest<Tag>(`/tags/${id}`);
+  },
+
+  create: async (data: { name: string; description?: string; segment?: number }): Promise<Tag> => {
+    return apiRequest<Tag>('/tags', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  update: async (id: number, data: { name?: string; description?: string; segment?: number }): Promise<Tag> => {
+    return apiRequest<Tag>(`/tags/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await apiRequest(`/tags/${id}`, { method: 'DELETE' });
+  },
+};
+
+// ==================== TEMPLATES ====================
+export interface Template {
+  id: number;
+  name: string;
+  language: string;
+  category: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION';
+  lineId: number;
+  namespace?: string;
+  status: 'APPROVED' | 'PENDING' | 'REJECTED';
+  headerType?: 'TEXT' | 'IMAGE' | 'VIDEO' | 'DOCUMENT';
+  headerContent?: string;
+  bodyText: string;
+  footerText?: string;
+  buttons?: Array<{ type: string; text: string }>;
+  variables?: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateTemplateData {
+  name: string;
+  language?: string;
+  category?: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION';
+  lineId: number;
+  namespace?: string;
+  headerType?: 'TEXT' | 'IMAGE' | 'VIDEO' | 'DOCUMENT';
+  headerContent?: string;
+  bodyText: string;
+  footerText?: string;
+  buttons?: Array<{ type: string; text: string }>;
+  variables?: string[];
+}
+
+export const templatesService = {
+  list: async (params?: { search?: string; lineId?: number; status?: string }): Promise<Template[]> => {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>)}` : '';
+    return apiRequest<Template[]>(`/templates${query}`);
+  },
+
+  getById: async (id: number): Promise<Template> => {
+    return apiRequest<Template>(`/templates/${id}`);
+  },
+
+  getByLine: async (lineId: number): Promise<Template[]> => {
+    return apiRequest<Template[]>(`/templates/line/${lineId}`);
+  },
+
+  create: async (data: CreateTemplateData): Promise<Template> => {
+    return apiRequest<Template>('/templates', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  update: async (id: number, data: Partial<CreateTemplateData & { status: string }>): Promise<Template> => {
+    return apiRequest<Template>(`/templates/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await apiRequest(`/templates/${id}`, { method: 'DELETE' });
+  },
+
+  sync: async (id: number): Promise<{ success: boolean; message: string; templateId: string }> => {
+    return apiRequest(`/templates/${id}/sync`, { method: 'POST' });
+  },
+
+  send: async (data: {
+    templateId: number;
+    phone: string;
+    contactName?: string;
+    variables?: Array<{ key: string; value: string }>;
+    lineId?: number;
+  }): Promise<{ success: boolean; messageId: string }> => {
+    return apiRequest('/templates/send', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  sendMassive: async (data: {
+    templateId: number;
+    recipients: Array<{
+      phone: string;
+      name?: string;
+      variables?: Array<{ key: string; value: string }>;
+    }>;
+    lineId?: number;
+  }): Promise<{ success: boolean; total: number; sent: number }> => {
+    return apiRequest('/templates/send/massive', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+};
+
+// ==================== DASHBOARD STATS ====================
+export interface DailyStats {
+  date: string;
+  conversations: number;
+  messages: number;
+  operators: number;
+}
+
+export const dashboardService = {
+  getDailyStats: async (days: number = 7): Promise<DailyStats[]> => {
+    return apiRequest<DailyStats[]>(`/dashboard/stats?days=${days}`);
+  },
+};
+
+// ==================== REPORTS ====================
+export interface ReportParams {
+  startDate: string;
+  endDate: string;
+  segment?: number;
+  type: string;
+}
+
+export const reportsService = {
+  generate: async (params: ReportParams): Promise<Blob> => {
+    const token = getAuthToken();
+    const response = await fetch(`${API_BASE_URL}/reports/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      throw new Error('Erro ao gerar relatório');
+    }
+
+    return response.blob();
+  },
+};
+
+// ==================== API LOGS ====================
+export interface ApiLog {
+  id: number;
+  endpoint: string;
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  statusCode: number;
+  ip: string;
+  date: string;
+  requestPayload?: object;
+  responsePayload?: object;
+  userAgent?: string;
+}
+
+export const apiLogsService = {
+  list: async (params?: {
+    endpoint?: string;
+    method?: string;
+    statusCode?: number;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<ApiLog[]> => {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>)}` : '';
+    return apiRequest<ApiLog[]>(`/api-logs${query}`);
+  },
+
+  getById: async (id: number): Promise<ApiLog> => {
+    return apiRequest<ApiLog>(`/api-logs/${id}`);
+  },
+};
