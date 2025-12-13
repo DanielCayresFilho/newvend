@@ -15,7 +15,6 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { MediaService } from './media.service';
 
 @Controller('media')
-@UseGuards(JwtAuthGuard)
 export class MediaController {
   constructor(private readonly mediaService: MediaService) {}
 
@@ -23,6 +22,7 @@ export class MediaController {
    * Upload de mídia (operador enviando)
    */
   @Post('upload')
+  @UseGuards(JwtAuthGuard)
   @UseInterceptors(FileInterceptor('file'))
   async uploadMedia(@UploadedFile() file: Express.Multer.File) {
     if (!file) {
@@ -65,12 +65,13 @@ export class MediaController {
   }
 
   /**
-   * Download/visualização de mídia
+   * Download/visualização de mídia (sem autenticação para permitir <img> e <audio>)
    */
   @Get(':filename')
   async getMedia(@Param('filename') filename: string, @Res() res: Response) {
     const filePath = await this.mediaService.getFilePath(filename);
-    return res.sendFile(filePath, { root: '.' });
+    // Usar caminho absoluto com process.cwd()
+    return res.sendFile(filePath, { root: process.cwd() });
   }
 }
 

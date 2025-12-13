@@ -517,12 +517,15 @@ export default function Templates() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="segment">Segmento</Label>
-                <Select value={formData.segmentId} onValueChange={(value) => setFormData({ ...formData, segmentId: value })}>
+                <Select 
+                  value={formData.segmentId || 'global'} 
+                  onValueChange={(value) => setFormData({ ...formData, segmentId: value === 'global' ? '' : value })}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Todos (Global)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Todos (Global)</SelectItem>
+                    <SelectItem value="global">Todos (Global)</SelectItem>
                     {segments.map((segment) => (
                       <SelectItem key={segment.id} value={segment.id.toString()}>
                         {segment.name}
@@ -531,7 +534,7 @@ export default function Templates() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Deixe vazio para usar em qualquer segmento
+                  Deixe em "Global" para usar em qualquer segmento
                 </p>
               </div>
               <div className="space-y-2">

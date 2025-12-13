@@ -139,9 +139,9 @@ export default function Atendimento() {
   // Subscribe to message sent confirmation
   useRealtimeSubscription('message-sent', (data: any) => {
     console.log('[Atendimento] Message sent confirmation:', data);
-    if (data) {
+    if (data?.message) {
       // Adicionar mensagem à conversa ativa
-      const newMsg = data as APIConversation;
+      const newMsg = data.message as APIConversation;
       
       setConversations(prev => {
         const existing = prev.find(c => c.contactPhone === newMsg.contactPhone);
@@ -709,7 +709,59 @@ export default function Atendimento() {
                             : "bg-primary text-primary-foreground"
                         )}
                       >
-                        <p className="text-sm">{msg.message}</p>
+                        {/* Renderizar mídia baseado no messageType */}
+                        {msg.messageType === 'image' && msg.mediaUrl ? (
+                          <div className="mb-2">
+                            <img 
+                              src={msg.mediaUrl.startsWith('http') ? msg.mediaUrl : `https://api.newvend.taticamarketing.com.br${msg.mediaUrl}`}
+                              alt="Imagem"
+                              className="max-w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                              style={{ maxHeight: '300px' }}
+                              onClick={() => window.open(msg.mediaUrl!.startsWith('http') ? msg.mediaUrl! : `https://api.newvend.taticamarketing.com.br${msg.mediaUrl}`, '_blank')}
+                            />
+                            {msg.message && !msg.message.includes('recebida') && (
+                              <p className="text-sm mt-2">{msg.message}</p>
+                            )}
+                          </div>
+                        ) : msg.messageType === 'audio' && msg.mediaUrl ? (
+                          <div className="mb-2">
+                            <audio 
+                              controls 
+                              className="max-w-full"
+                              src={msg.mediaUrl.startsWith('http') ? msg.mediaUrl : `https://api.newvend.taticamarketing.com.br${msg.mediaUrl}`}
+                            >
+                              Seu navegador não suporta áudio.
+                            </audio>
+                          </div>
+                        ) : msg.messageType === 'video' && msg.mediaUrl ? (
+                          <div className="mb-2">
+                            <video 
+                              controls 
+                              className="max-w-full rounded-lg"
+                              style={{ maxHeight: '300px' }}
+                              src={msg.mediaUrl.startsWith('http') ? msg.mediaUrl : `https://api.newvend.taticamarketing.com.br${msg.mediaUrl}`}
+                            >
+                              Seu navegador não suporta vídeo.
+                            </video>
+                            {msg.message && !msg.message.includes('recebido') && (
+                              <p className="text-sm mt-2">{msg.message}</p>
+                            )}
+                          </div>
+                        ) : msg.messageType === 'document' && msg.mediaUrl ? (
+                          <div className="mb-2">
+                            <a 
+                              href={msg.mediaUrl.startsWith('http') ? msg.mediaUrl : `https://api.newvend.taticamarketing.com.br${msg.mediaUrl}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-2 text-sm underline hover:no-underline"
+                            >
+                              <FileText className="h-4 w-4" />
+                              {msg.message || 'Documento'}
+                            </a>
+                          </div>
+                        ) : (
+                          <p className="text-sm">{msg.message}</p>
+                        )}
                         <p className={cn(
                           "text-xs mt-1",
                           msg.sender === 'contact' ? "text-muted-foreground" : "text-primary-foreground/70"

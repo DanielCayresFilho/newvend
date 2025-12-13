@@ -173,12 +173,12 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
 
       console.log(`✅ [WebSocket] Mensagem salva no banco, ID: ${conversation.id}`);
       
-      // Emitir mensagem para o usuário
-      client.emit('message-sent', conversation);
+      // Emitir mensagem para o usuário (usar mesmo formato que new_message)
+      client.emit('message-sent', { message: conversation });
       console.log(`📤 [WebSocket] Emitido message-sent para o cliente`);
 
       // Se houver supervisores online do mesmo segmento, enviar para eles também
-      this.emitToSupervisors(user.segment, 'new-message', conversation);
+      this.emitToSupervisors(user.segment, 'new_message', { message: conversation });
 
       return { success: true, conversation };
     } catch (error) {
@@ -201,7 +201,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
 
   // Método para emitir mensagens recebidas via webhook
   async emitNewMessage(conversation: any) {
-    console.log(`📤 Emitindo new-message para contactPhone: ${conversation.contactPhone}`);
+    console.log(`📤 Emitindo new_message para contactPhone: ${conversation.contactPhone}`);
     
     // Emitir para o operador responsável
     if (conversation.userLine) {
@@ -213,14 +213,15 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         const socketId = this.connectedUsers.get(user.id);
         if (socketId) {
           console.log(`  → Enviando para ${user.name} (${user.role})`);
-          this.server.to(socketId).emit('new-message', conversation);
+          // Usar underscore para corresponder ao frontend: new_message
+          this.server.to(socketId).emit('new_message', { message: conversation });
         }
       });
     }
 
     // Emitir para supervisores do segmento
     if (conversation.segment) {
-      this.emitToSupervisors(conversation.segment, 'new-message', conversation);
+      this.emitToSupervisors(conversation.segment, 'new_message', { message: conversation });
     }
   }
 

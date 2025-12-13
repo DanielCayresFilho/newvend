@@ -108,21 +108,33 @@ class RealtimeWebSocket {
     return this.connectPromise;
   }
 
+  private registeredEvents: Set<string> = new Set();
+
   private setupEventListeners() {
     if (!this.socket) return;
 
     // Reconfigurar todos os event handlers registrados
-    this.handlers.forEach((handlerSet, eventType) => {
-      this.socket!.on(eventType, (data) => {
-        console.log('[Socket.IO] Message received:', eventType);
+    this.handlers.forEach((_, eventType) => {
+      this.registerEventOnSocket(eventType);
+    });
+  }
+
+  private registerEventOnSocket(eventType: string) {
+    if (!this.socket || eventType === 'all' || this.registeredEvents.has(eventType)) return;
+
+    this.registeredEvents.add(eventType);
+    this.socket.on(eventType, (data) => {
+      console.log('[Socket.IO] Message received:', eventType, data);
+      const handlerSet = this.handlers.get(eventType);
+      if (handlerSet) {
         handlerSet.forEach(handler => handler(data));
-        
-        // Também disparar para handlers 'all'
-        const allHandlers = this.handlers.get('all');
-        if (allHandlers && eventType !== 'all') {
-          allHandlers.forEach(handler => handler({ type: eventType, ...data }));
-        }
-      });
+      }
+      
+      // Também disparar para handlers 'all'
+      const allHandlers = this.handlers.get('all');
+      if (allHandlers) {
+        allHandlers.forEach(handler => handler({ type: eventType, ...data }));
+      }
     });
   }
 
@@ -131,6 +143,7 @@ class RealtimeWebSocket {
       this.socket.disconnect();
       this.socket = null;
       this.currentToken = null;
+      this.registeredEvents.clear(); // Limpar eventos registrados
     }
   }
 
@@ -140,15 +153,9 @@ class RealtimeWebSocket {
     }
     this.handlers.get(eventType)!.add(handler);
 
-    // Registrar listener no socket se já estiver conectado
-    if (this.socket && eventType !== 'all') {
-      this.socket.on(eventType, (data) => {
-        console.log('[Socket.IO] Message received:', eventType);
-        const typeHandlers = this.handlers.get(eventType);
-        if (typeHandlers) {
-          typeHandlers.forEach(h => h(data));
-        }
-      });
+    // Registrar listener no socket se já estiver conectado (sem duplicação)
+    if (this.socket) {
+      this.registerEventOnSocket(eventType);
     }
 
     // Return unsubscribe function
@@ -156,12 +163,8 @@ class RealtimeWebSocket {
       const handlers = this.handlers.get(eventType);
       if (handlers) {
         handlers.delete(handler);
-        if (handlers.size === 0) {
-          this.handlers.delete(eventType);
-          if (this.socket && eventType !== 'all') {
-            this.socket.off(eventType);
-          }
-        }
+        // Não remover o listener do socket, apenas o handler
+        // O listener continuará ativo para outros handlers
       }
     };
   }
