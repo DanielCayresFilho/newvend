@@ -53,6 +53,8 @@ export default function Atendimento() {
   const [newContactName, setNewContactName] = useState("");
   const [newContactPhone, setNewContactPhone] = useState("");
   const [newContactCpf, setNewContactCpf] = useState("");
+  const [newContactContract, setNewContactContract] = useState("");
+  const [newContactMessage, setNewContactMessage] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { playMessageSound, playSuccessSound, playErrorSound } = useNotificationSound();
   const { isConnected: isRealtimeConnected } = useRealtimeConnection();
@@ -388,6 +390,15 @@ export default function Atendimento() {
       return;
     }
 
+    if (!newContactMessage.trim()) {
+      toast({
+        title: "Mensagem obrigatória",
+        description: "Digite a mensagem que deseja enviar",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (!user?.lineId) {
       toast({
         title: "Linha não atribuída",
@@ -404,18 +415,19 @@ export default function Atendimento() {
           name: newContactName.trim(),
           phone: newContactPhone.trim(),
           cpf: newContactCpf.trim() || undefined,
+          contract: newContactContract.trim() || undefined,
           segment: user.segmentId,
         });
       } catch {
         // Contato pode já existir, ignorar erro
       }
 
-      // Usar WebSocket para enviar primeira mensagem via WhatsApp
+      // Usar WebSocket para enviar a mensagem escrita pelo operador
       if (isRealtimeConnected) {
         console.log('[Atendimento] Criando nova conversa via WebSocket...');
         realtimeSocket.send('send-message', {
           contactPhone: newContactPhone.trim(),
-          message: `Olá ${newContactName.trim()}, tudo bem?`,
+          message: newContactMessage.trim(),
           messageType: 'text',
         });
 
@@ -451,6 +463,8 @@ export default function Atendimento() {
       setNewContactName("");
       setNewContactPhone("");
       setNewContactCpf("");
+      setNewContactContract("");
+      setNewContactMessage("");
     } catch (error) {
       playErrorSound();
       toast({
@@ -459,7 +473,7 @@ export default function Atendimento() {
         variant: "destructive",
       });
     }
-  }, [newContactName, newContactPhone, newContactCpf, user, isRealtimeConnected, playSuccessSound, playErrorSound, loadConversations]);
+  }, [newContactName, newContactPhone, newContactCpf, newContactContract, newContactMessage, user, isRealtimeConnected, playSuccessSound, playErrorSound, loadConversations]);
 
   const formatTime = (datetime: string) => {
     try {
@@ -542,13 +556,31 @@ export default function Atendimento() {
                       onChange={(e) => setNewContactCpf(e.target.value)}
                     />
                   </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="contract">Contrato</Label>
+                    <Input 
+                      id="contract" 
+                      placeholder="Número do contrato"
+                      value={newContactContract}
+                      onChange={(e) => setNewContactContract(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="message">Mensagem *</Label>
+                    <Input 
+                      id="message" 
+                      placeholder="Digite a mensagem que deseja enviar..."
+                      value={newContactMessage}
+                      onChange={(e) => setNewContactMessage(e.target.value)}
+                    />
+                  </div>
                 </div>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setIsNewConversationOpen(false)}>
                     Cancelar
                   </Button>
-                  <Button onClick={handleNewConversation}>
-                    Iniciar Conversa
+                  <Button onClick={handleNewConversation} disabled={!newContactMessage.trim()}>
+                    Enviar Mensagem
                   </Button>
                 </DialogFooter>
               </DialogContent>

@@ -10,18 +10,15 @@ export class TemplatesService {
   constructor(private prisma: PrismaService) {}
 
   async create(createTemplateDto: CreateTemplateDto) {
-    // Verificar se a linha existe
-    const line = await this.prisma.linesStock.findUnique({
-      where: { id: createTemplateDto.lineId },
-    });
+    // Se um segmento foi fornecido, verificar se existe
+    if (createTemplateDto.segmentId) {
+      const segment = await this.prisma.segment.findUnique({
+        where: { id: createTemplateDto.segmentId },
+      });
 
-    if (!line) {
-      throw new NotFoundException(`Linha com ID ${createTemplateDto.lineId} não encontrada`);
-    }
-
-    // Verificar se a linha é oficial (WhatsApp Cloud API)
-    if (!line.oficial) {
-      throw new BadRequestException('Templates só podem ser vinculados a linhas oficiais (WhatsApp Cloud API)');
+      if (!segment) {
+        throw new NotFoundException(`Segmento com ID ${createTemplateDto.segmentId} não encontrado`);
+      }
     }
 
     // Serializar arrays para JSON
@@ -33,7 +30,8 @@ export class TemplatesService {
         name: createTemplateDto.name,
         language: createTemplateDto.language || 'pt_BR',
         category: createTemplateDto.category || 'MARKETING',
-        lineId: createTemplateDto.lineId,
+        segmentId: createTemplateDto.segmentId || null,  // null = global
+        lineId: createTemplateDto.lineId || null,  // Mantido para compatibilidade
         namespace: createTemplateDto.namespace,
         headerType: createTemplateDto.headerType,
         headerContent: createTemplateDto.headerContent,
@@ -41,13 +39,13 @@ export class TemplatesService {
         footerText: createTemplateDto.footerText,
         buttons,
         variables,
-        status: 'PENDING',
+        status: 'APPROVED',  // Templates internos já vêm aprovados
       },
     });
   }
 
   async findAll(filters?: any) {
-    const { search, lineId, status, ...validFilters } = filters || {};
+    const { search, lineId, segmentId, status, ...validFilters } = filters || {};
 
     const where: any = { ...validFilters };
 
@@ -62,6 +60,10 @@ export class TemplatesService {
       where.lineId = parseInt(lineId);
     }
 
+    if (segmentId) {
+      where.segmentId = parseInt(segmentId);
+    }
+
     if (status) {
       where.status = status;
     }
@@ -72,6 +74,26 @@ export class TemplatesService {
     });
 
     // Parse JSON fields
+    return templates.map(template => ({
+      ...template,
+      buttons: template.buttons ? JSON.parse(template.buttons) : null,
+      variables: template.variables ? JSON.parse(template.variables) : null,
+    }));
+  }
+
+  async findBySegment(segmentId: number) {
+    // Retornar templates do segmento específico + templates globais (segmentId = null)
+    const templates = await this.prisma.template.findMany({
+      where: {
+        OR: [
+          { segmentId },
+          { segmentId: null },  // Templates globais
+        ],
+        status: 'APPROVED',
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
     return templates.map(template => ({
       ...template,
       buttons: template.buttons ? JSON.parse(template.buttons) : null,

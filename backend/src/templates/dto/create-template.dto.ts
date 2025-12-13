@@ -38,8 +38,17 @@ export class CreateTemplateDto {
     return isNaN(num) ? undefined : num;
   })
   @IsNumber()
-  @IsNotEmpty()
-  lineId: number;
+  @IsOptional()
+  segmentId?: number;  // null = global (todos os segmentos)
+
+  @Transform(({ value }) => {
+    if (value === null || value === undefined || value === '') return undefined;
+    const num = Number(value);
+    return isNaN(num) ? undefined : num;
+  })
+  @IsNumber()
+  @IsOptional()
+  lineId?: number;  // Mantido para compatibilidade
 
   @IsString()
   @IsOptional()

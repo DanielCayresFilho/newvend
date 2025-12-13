@@ -103,15 +103,16 @@ export default function Linhas() {
         </Badge>
       )
     },
-    {
-      key: "type",
-      label: "Tipo",
-      render: (line) => (
-        <Badge variant={line.type === 'official' ? "default" : "secondary"} className={line.type === 'official' ? "bg-whatsapp" : ""}>
-          {line.type === 'official' ? "Oficial" : "Evolution"}
-        </Badge>
-      )
-    },
+    // OCULTO: Coluna Tipo - Funcionalidade Cloud API oculta por enquanto
+    // {
+    //   key: "type",
+    //   label: "Tipo",
+    //   render: (line) => (
+    //     <Badge variant={line.type === 'official' ? "default" : "secondary"} className={line.type === 'official' ? "bg-whatsapp" : ""}>
+    //       {line.type === 'official' ? "Oficial" : "Evolution"}
+    //     </Badge>
+    //   )
+    // },
     { key: "evolutionName", label: "Evolution" }
   ];
 
@@ -333,6 +334,7 @@ export default function Linhas() {
         </Select>
       </div>
       
+      {/* OCULTO: Opção Cloud API - Funcionalidade oculta por enquanto
       <div className="flex items-center space-x-2 pt-2">
         <Checkbox
           id="isOfficial"
@@ -343,6 +345,7 @@ export default function Linhas() {
           WhatsApp Oficial (Cloud API)
         </Label>
       </div>
+      */}
 
       {formData.isOfficial && (
         <div className="space-y-4 pt-2 border-t border-border">

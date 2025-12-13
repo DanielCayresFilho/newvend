@@ -45,6 +45,13 @@ export class TemplatesController {
     return this.templatesService.findOne(id);
   }
 
+  @Get('segment/:segmentId')
+  @Roles('admin', 'supervisor', 'operator')
+  findBySegment(@Param('segmentId', ParseIntPipe) segmentId: number) {
+    return this.templatesService.findBySegment(segmentId);
+  }
+
+  // Mantido para compatibilidade
   @Get('line/:lineId')
   @Roles('admin', 'supervisor', 'operator')
   findByLine(@Param('lineId', ParseIntPipe) lineId: number) {

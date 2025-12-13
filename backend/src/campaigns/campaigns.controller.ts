@@ -53,6 +53,8 @@ export class CampaignsController {
             contacts.push({
               name: row.name,
               phone: row.phone,
+              cpf: row.cpf || undefined,
+              contract: row.contrato || row.contract || undefined,
               segment: row.segment ? parseInt(row.segment) : undefined,
             });
           }

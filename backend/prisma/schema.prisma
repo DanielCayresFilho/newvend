@@ -209,15 +209,16 @@ model ApiLog {
   @@index([createdAt])
 }
 
-// Template para WhatsApp Cloud API
+// Template para mensagens de campanha (vinculado a segmento)
 model Template {
   id              Int         @id @default(autoincrement())
   name            String
   language        String      @default("pt_BR")
   category        String      @default("MARKETING")
-  lineId          Int
+  segmentId       Int?        // null = global (todos os segmentos)
+  lineId          Int?        // Mantido para compatibilidade (pode ser removido futuramente)
   namespace       String?
-  status          String      @default("PENDING")
+  status          String      @default("APPROVED")
   headerType      String?
   headerContent   String?     @db.Text
   bodyText        String      @db.Text
@@ -228,7 +229,7 @@ model Template {
   updatedAt       DateTime    @updatedAt
 
   @@index([name])
-  @@index([lineId])
+  @@index([segmentId])
   @@index([status])
   @@index([category])
 }

@@ -641,7 +641,8 @@ export interface Template {
   name: string;
   language: string;
   category: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION';
-  lineId: number;
+  segmentId: number | null;  // Vinculado a segmento (null = global)
+  lineId?: number;  // Mantido para compatibilidade
   namespace?: string;
   status: 'APPROVED' | 'PENDING' | 'REJECTED';
   headerType?: 'TEXT' | 'IMAGE' | 'VIDEO' | 'DOCUMENT';
@@ -658,7 +659,8 @@ export interface CreateTemplateData {
   name: string;
   language?: string;
   category?: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION';
-  lineId: number;
+  segmentId?: number;  // Vinculado a segmento (opcional = global)
+  lineId?: number;  // Mantido para compatibilidade
   namespace?: string;
   headerType?: 'TEXT' | 'IMAGE' | 'VIDEO' | 'DOCUMENT';
   headerContent?: string;
@@ -669,7 +671,7 @@ export interface CreateTemplateData {
 }
 
 export const templatesService = {
-  list: async (params?: { search?: string; lineId?: number; status?: string }): Promise<Template[]> => {
+  list: async (params?: { search?: string; segmentId?: number; status?: string }): Promise<Template[]> => {
     const query = params ? `?${new URLSearchParams(params as Record<string, string>)}` : '';
     return apiRequest<Template[]>(`/templates${query}`);
   },
@@ -678,8 +680,8 @@ export const templatesService = {
     return apiRequest<Template>(`/templates/${id}`);
   },
 
-  getByLine: async (lineId: number): Promise<Template[]> => {
-    return apiRequest<Template[]>(`/templates/line/${lineId}`);
+  getBySegment: async (segmentId: number): Promise<Template[]> => {
+    return apiRequest<Template[]>(`/templates/segment/${segmentId}`);
   },
 
   create: async (data: CreateTemplateData): Promise<Template> => {

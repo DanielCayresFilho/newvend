@@ -27,6 +27,8 @@ export class ReportsService {
    * Tempo Médio Atendimento, Tempo Médio Resposta
    */
   async getOpSinteticoReport(filters: ReportFilterDto) {
+    console.log('📊 [Reports] OP Sintético - Filtros:', JSON.stringify(filters));
+    
     const whereClause: any = {};
 
     if (filters.segment) {
@@ -36,17 +38,21 @@ export class ReportsService {
     if (filters.startDate || filters.endDate) {
       whereClause.datetime = {};
       if (filters.startDate) {
-        whereClause.datetime.gte = new Date(filters.startDate);
+        whereClause.datetime.gte = new Date(`${filters.startDate}T00:00:00.000Z`);
       }
       if (filters.endDate) {
-        whereClause.datetime.lte = new Date(filters.endDate);
+        whereClause.datetime.lte = new Date(`${filters.endDate}T23:59:59.999Z`);
       }
     }
+
+    console.log('📊 [Reports] OP Sintético - Where:', JSON.stringify(whereClause));
 
     const conversations = await this.prisma.conversation.findMany({
       where: whereClause,
       orderBy: { datetime: 'asc' },
     });
+
+    console.log(`📊 [Reports] OP Sintético - ${conversations.length} conversas encontradas`);
 
     const segments = await this.prisma.segment.findMany();
     const segmentMap = new Map(segments.map(s => [s.id, s]));
@@ -104,6 +110,23 @@ export class ReportsService {
       'Tempo Médio Resposta': null,
     }));
 
+    // Se não houver dados, retornar registro vazio com cabeçalhos
+    if (result.length === 0) {
+      return [{
+        Segmento: '',
+        Data: '',
+        Hora: '',
+        'Qtd. Total Mensagens': 0,
+        'Qtd. Total Entrantes': 0,
+        'Qtd. Promessas': 0,
+        Conversão: '0%',
+        'Tempo Médio Transbordo': '',
+        'Tempo Médio Espera Total': '',
+        'Tempo Médio Atendimento': '',
+        'Tempo Médio Resposta': '',
+      }];
+    }
+
     return result;
   }
 
@@ -116,6 +139,8 @@ export class ReportsService {
    * Identificador da chamada de Voz
    */
   async getKpiReport(filters: ReportFilterDto) {
+    console.log('📊 [Reports] KPI - Filtros:', JSON.stringify(filters));
+    
     const whereClause: any = {
       tabulation: { not: null },
     };
@@ -127,17 +152,21 @@ export class ReportsService {
     if (filters.startDate || filters.endDate) {
       whereClause.datetime = {};
       if (filters.startDate) {
-        whereClause.datetime.gte = new Date(filters.startDate);
+        whereClause.datetime.gte = new Date(`${filters.startDate}T00:00:00.000Z`);
       }
       if (filters.endDate) {
-        whereClause.datetime.lte = new Date(filters.endDate);
+        whereClause.datetime.lte = new Date(`${filters.endDate}T23:59:59.999Z`);
       }
     }
+
+    console.log('📊 [Reports] KPI - Where:', JSON.stringify(whereClause));
 
     const conversations = await this.prisma.conversation.findMany({
       where: whereClause,
       orderBy: { datetime: 'desc' },
     });
+
+    console.log(`📊 [Reports] KPI - ${conversations.length} conversas encontradas`);
 
     const tabulations = await this.prisma.tabulation.findMany();
     const tabulationMap = new Map(tabulations.map(t => [t.id, t]));
@@ -177,6 +206,32 @@ export class ReportsService {
       };
     });
 
+    // Se não houver dados, retornar registro vazio com cabeçalhos
+    if (result.length === 0) {
+      return [{
+        'Data Evento': '',
+        'Descrição Evento': '',
+        'Tipo de Evento': '',
+        'Evento Finalizador': '',
+        Contato: '',
+        Identificação: '',
+        'Código Contato': '',
+        Hashtag: '',
+        Usuário: '',
+        'Número Protocolo': '',
+        'Data Hora Geração Protocolo': '',
+        Observação: 'Nenhum registro encontrado no período selecionado',
+        'SMS Principal': '',
+        'Whatsapp Principal': '',
+        'Email Principal': '',
+        Canal: '',
+        Carteiras: '',
+        'Carteira do Evento': '',
+        'Valor da oportunidade': '',
+        'Identificador da chamada de Voz': '',
+      }];
+    }
+
     return result;
   }
 
@@ -196,17 +251,21 @@ export class ReportsService {
     if (filters.startDate || filters.endDate) {
       whereClause.dateTime = {};
       if (filters.startDate) {
-        whereClause.dateTime.gte = new Date(filters.startDate);
+        whereClause.dateTime.gte = new Date(`${filters.startDate}T00:00:00.000Z`);
       }
       if (filters.endDate) {
-        whereClause.dateTime.lte = new Date(filters.endDate);
+        whereClause.dateTime.lte = new Date(`${filters.endDate}T23:59:59.999Z`);
       }
     }
+
+    console.log('📊 [Reports] HSM - Where:', JSON.stringify(whereClause));
 
     const campaigns = await this.prisma.campaign.findMany({
       where: whereClause,
       orderBy: { dateTime: 'desc' },
     });
+
+    console.log(`📊 [Reports] HSM - ${campaigns.length} campanhas encontradas`);
 
     const segments = await this.prisma.segment.findMany();
     const segmentMap = new Map(segments.map(s => [s.id, s]));
@@ -241,6 +300,28 @@ export class ReportsService {
         'Teve retorno': campaign.response ? 'Sim' : 'Não',
       };
     });
+
+    // Se não houver dados, retornar registro vazio com cabeçalhos
+    if (result.length === 0) {
+      return [{
+        Contato: '',
+        Identificador: '',
+        Código: '',
+        Hashtag: '',
+        Template: '',
+        'WhatsApp do contato': '',
+        'Solicitação envio': '',
+        Envio: 'Nenhum registro encontrado no período selecionado',
+        Confirmação: '',
+        'Leitura (se habilitado)': '',
+        'Falha entrega': '',
+        'Motivo falha': '',
+        'WhatsApp de saida': '',
+        'Usuário Solicitante': '',
+        Carteira: '',
+        'Teve retorno': '',
+      }];
+    }
 
     return result;
   }

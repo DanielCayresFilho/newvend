@@ -88,7 +88,15 @@ export class CampaignsService {
         await this.contactsService.create({
           name: contact.name,
           phone: contact.phone,
+          cpf: contact.cpf,
+          contract: contact.contract,
           segment: campaign.contactSegment,
+        });
+      } else if (contact.cpf || contact.contract) {
+        // Atualizar contato existente com novos dados
+        await this.contactsService.update(existingContact.id, {
+          cpf: contact.cpf || existingContact.cpf,
+          contract: contact.contract || existingContact.contract,
         });
       }
 

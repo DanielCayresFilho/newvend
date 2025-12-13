@@ -31,13 +31,13 @@ import {
 } from "@/components/ui/dialog";
 import { Pencil, Trash2, Plus, Package } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { templatesService, linesService, Template as APITemplate, Line } from "@/services/api";
+import { templatesService, segmentsService, Template as APITemplate, Segment } from "@/services/api";
 
 interface Template {
   id: string;
   name: string;
-  lineId: string;
-  lineName: string;
+  segmentId: number | null;
+  segmentName: string;
   category: string;
   status: 'APPROVED' | 'PENDING' | 'REJECTED';
   body: string;
@@ -65,8 +65,8 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 export default function Templates() {
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [lines, setLines] = useState<Line[]>([]);
-  const [filters, setFilters] = useState({ search: '', line: '', status: '' });
+  const [segments, setSegments] = useState<Segment[]>([]);
+  const [filters, setFilters] = useState({ search: '', segment: '', status: '' });
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -75,7 +75,7 @@ export default function Templates() {
   const [pageSize, setPageSize] = useState(10);
   const [formData, setFormData] = useState<{
     name: string;
-    lineId: string;
+    segmentId: string;
     language: string;
     category: string;
     namespace: string;
@@ -87,7 +87,7 @@ export default function Templates() {
     status: 'APPROVED' | 'PENDING' | 'REJECTED';
   }>({
     name: '',
-    lineId: '',
+    segmentId: '',
     language: 'pt_BR',
     category: '',
     namespace: '',
@@ -96,16 +96,16 @@ export default function Templates() {
     body: '',
     footer: '',
     variables: '',
-    status: 'PENDING'
+    status: 'APPROVED'
   });
 
   const mapApiToLocal = useCallback((apiTemplate: APITemplate): Template => {
-    const line = lines.find(l => l.id === apiTemplate.lineId);
+    const segment = segments.find(s => s.id === apiTemplate.segmentId);
     return {
       id: apiTemplate.id.toString(),
       name: apiTemplate.name,
-      lineId: apiTemplate.lineId.toString(),
-      lineName: line?.phone || `Linha ${apiTemplate.lineId}`,
+      segmentId: apiTemplate.segmentId,
+      segmentName: segment?.name || 'Todos os segmentos',
       category: apiTemplate.category,
       status: apiTemplate.status,
       body: apiTemplate.bodyText,
@@ -116,7 +116,7 @@ export default function Templates() {
       language: apiTemplate.language,
       variables: apiTemplate.variables?.join(', '),
     };
-  }, [lines]);
+  }, [segments]);
 
   const loadTemplates = useCallback(async () => {
     try {
@@ -134,29 +134,32 @@ export default function Templates() {
     }
   }, [mapApiToLocal]);
 
-  const loadLines = useCallback(async () => {
+  const loadSegments = useCallback(async () => {
     try {
-      const data = await linesService.list();
-      setLines(data);
+      const data = await segmentsService.list();
+      setSegments(data);
     } catch (error) {
-      console.error('Error loading lines:', error);
+      console.error('Error loading segments:', error);
     }
   }, []);
 
   useEffect(() => {
-    loadLines();
-  }, [loadLines]);
+    loadSegments();
+  }, [loadSegments]);
 
   useEffect(() => {
-    if (lines.length > 0) {
+    if (segments.length >= 0) {
       loadTemplates();
     }
-  }, [lines, loadTemplates]);
+  }, [segments, loadTemplates]);
 
   const filteredTemplates = useMemo(() => {
     return templates.filter(t => {
       if (filters.search && !t.name.toLowerCase().includes(filters.search.toLowerCase())) return false;
-      if (filters.line && filters.line !== 'all' && t.lineId !== filters.line) return false;
+      if (filters.segment && filters.segment !== 'all') {
+        if (filters.segment === 'none' && t.segmentId !== null) return false;
+        if (filters.segment !== 'none' && t.segmentId?.toString() !== filters.segment) return false;
+      }
       if (filters.status && filters.status !== 'all' && t.status !== filters.status) return false;
       return true;
     });
@@ -212,7 +215,7 @@ export default function Templates() {
     setEditingTemplate(null);
     setFormData({
       name: '',
-      lineId: '',
+      segmentId: '',
       language: 'pt_BR',
       category: '',
       namespace: '',
@@ -221,7 +224,7 @@ export default function Templates() {
       body: '',
       footer: '',
       variables: '',
-      status: 'PENDING'
+      status: 'APPROVED'
     });
     setIsFormOpen(true);
   };
@@ -230,7 +233,7 @@ export default function Templates() {
     setEditingTemplate(template);
     setFormData({
       name: template.name,
-      lineId: template.lineId,
+      segmentId: template.segmentId?.toString() || '',
       language: template.language || 'pt_BR',
       category: template.category,
       namespace: template.namespace || '',
@@ -262,10 +265,10 @@ export default function Templates() {
   };
 
   const handleSave = async () => {
-    if (!formData.name.trim() || !formData.lineId || !formData.body.trim()) {
+    if (!formData.name.trim() || !formData.body.trim()) {
       toast({
         title: "Campos obrigatórios",
-        description: "Nome, linha e corpo são obrigatórios",
+        description: "Nome e corpo são obrigatórios",
         variant: "destructive",
       });
       return;
@@ -275,7 +278,7 @@ export default function Templates() {
     try {
       const payload = {
         name: formData.name.trim(),
-        lineId: parseInt(formData.lineId),
+        segmentId: formData.segmentId ? parseInt(formData.segmentId) : undefined,
         language: formData.language,
         category: formData.category as 'MARKETING' | 'UTILITY' | 'AUTHENTICATION' || undefined,
         namespace: formData.namespace.trim() || undefined,
@@ -322,7 +325,7 @@ export default function Templates() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-xl font-semibold text-foreground">Templates</h2>
-              <p className="text-sm text-muted-foreground">Gerenciar templates de mensagens</p>
+              <p className="text-sm text-muted-foreground">Gerenciar templates de mensagens para campanhas</p>
             </div>
             <Button onClick={handleAdd}>
               <Plus className="h-4 w-4 mr-2" />
@@ -340,15 +343,16 @@ export default function Templates() {
                 className="pl-10"
               />
             </div>
-            <Select value={filters.line} onValueChange={(value) => setFilters({ ...filters, line: value })}>
+            <Select value={filters.segment} onValueChange={(value) => setFilters({ ...filters, segment: value })}>
               <SelectTrigger>
-                <SelectValue placeholder="Todas as linhas" />
+                <SelectValue placeholder="Todos os segmentos" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todas as linhas</SelectItem>
-                {lines.map((line) => (
-                  <SelectItem key={line.id} value={line.id.toString()}>
-                    {line.phone}
+                <SelectItem value="all">Todos os segmentos</SelectItem>
+                <SelectItem value="none">Sem segmento (Global)</SelectItem>
+                {segments.map((segment) => (
+                  <SelectItem key={segment.id} value={segment.id.toString()}>
+                    {segment.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -386,7 +390,7 @@ export default function Templates() {
                   <TableHeader>
                     <TableRow className="bg-muted/30">
                       <TableHead>Nome</TableHead>
-                      <TableHead>Linha</TableHead>
+                      <TableHead>Segmento</TableHead>
                       <TableHead>Categoria</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="max-w-xs">Corpo</TableHead>
@@ -397,8 +401,12 @@ export default function Templates() {
                     {paginatedTemplates.map((template) => (
                       <TableRow key={template.id} className="hover:bg-muted/20 transition-colors">
                         <TableCell className="font-medium">{template.name}</TableCell>
-                        <TableCell>{template.lineName}</TableCell>
-                        <TableCell>{template.category}</TableCell>
+                        <TableCell>
+                          <Badge variant={template.segmentId ? "default" : "secondary"}>
+                            {template.segmentName}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{template.category || '-'}</TableCell>
                         <TableCell>
                           <Badge className={statusColors[template.status]}>
                             {statusLabels[template.status]}
@@ -504,22 +512,27 @@ export default function Templates() {
                   id="name"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="Nome do template"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="line">Linha *</Label>
-                <Select value={formData.lineId} onValueChange={(value) => setFormData({ ...formData, lineId: value })}>
+                <Label htmlFor="segment">Segmento</Label>
+                <Select value={formData.segmentId} onValueChange={(value) => setFormData({ ...formData, segmentId: value })}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecione" />
+                    <SelectValue placeholder="Todos (Global)" />
                   </SelectTrigger>
                   <SelectContent>
-                    {lines.map((line) => (
-                      <SelectItem key={line.id} value={line.id.toString()}>
-                        {line.phone}
+                    <SelectItem value="">Todos (Global)</SelectItem>
+                    {segments.map((segment) => (
+                      <SelectItem key={segment.id} value={segment.id.toString()}>
+                        {segment.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  Deixe vazio para usar em qualquer segmento
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="language">Idioma</Label>
@@ -548,43 +561,6 @@ export default function Templates() {
                 </Select>
               </div>
             </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="namespace">Namespace</Label>
-              <Input
-                id="namespace"
-                value={formData.namespace}
-                onChange={(e) => setFormData({ ...formData, namespace: e.target.value })}
-                placeholder="ex: vend_templates"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="headerType">Tipo de Header</Label>
-              <Select value={formData.headerType} onValueChange={(value) => setFormData({ ...formData, headerType: value })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="TEXT">Texto</SelectItem>
-                  <SelectItem value="IMAGE">Imagem</SelectItem>
-                  <SelectItem value="VIDEO">Vídeo</SelectItem>
-                  <SelectItem value="DOCUMENT">Documento</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {formData.headerType === 'TEXT' && (
-              <div className="space-y-2">
-                <Label htmlFor="header">Header</Label>
-                <Input
-                  id="header"
-                  value={formData.header}
-                  onChange={(e) => setFormData({ ...formData, header: e.target.value })}
-                  placeholder="Cabeçalho da mensagem"
-                />
-              </div>
-            )}
 
             <div className="space-y-2">
               <Label htmlFor="body">Corpo do Template *</Label>
@@ -592,34 +568,24 @@ export default function Templates() {
                 id="body"
                 value={formData.body}
                 onChange={(e) => setFormData({ ...formData, body: e.target.value })}
-                placeholder="Use {{1}}, {{2}}, etc. para variáveis"
+                placeholder="Olá {{nome}}, sua fatura de R$ {{valor}} vence em {{data}}..."
                 rows={4}
               />
               <p className="text-xs text-muted-foreground">
-                Use {"{{1}}"}, {"{{2}}"}, etc. para inserir variáveis dinâmicas
+                Use {"{{variavel}}"} para inserir variáveis dinâmicas do CSV
               </p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="footer">Rodapé</Label>
-              <Input
-                id="footer"
-                value={formData.footer}
-                onChange={(e) => setFormData({ ...formData, footer: e.target.value })}
-                placeholder="Texto do rodapé"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="variables">Variáveis</Label>
+              <Label htmlFor="variables">Variáveis (colunas do CSV)</Label>
               <Input
                 id="variables"
                 value={formData.variables}
                 onChange={(e) => setFormData({ ...formData, variables: e.target.value })}
-                placeholder="nome, valor, data (separados por vírgula)"
+                placeholder="nome, valor, data, contrato"
               />
               <p className="text-xs text-muted-foreground">
-                Liste as variáveis separadas por vírgula, na ordem correspondente
+                Liste as variáveis usadas no template, separadas por vírgula
               </p>
             </div>
 
