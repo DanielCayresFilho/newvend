@@ -16,7 +16,9 @@ import {
   Code,
   LogOut,
   Settings,
-  Sliders
+  Sliders,
+  Moon,
+  Sun
 } from "lucide-react";
 import { useLocation, Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -24,7 +26,7 @@ import { VendLogo } from "./VendLogo";
 import { useAuth } from "@/contexts/AuthContext";
 import { UserRole } from "@/types/auth";
 import { NotificationSettingsDialog } from "@/components/settings/NotificationSettingsDialog";
-import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { useTheme } from "next-themes";
 
 interface MenuItem {
   title: string;
@@ -55,6 +57,7 @@ const menuItems: MenuItem[] = [
 export function AppSidebar() {
   const location = useLocation();
   const { user, logout } = useAuth();
+  const { theme, setTheme } = useTheme();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   
   if (!user) return null;
@@ -66,6 +69,10 @@ export function AppSidebar() {
     admin: 'Administrador',
     supervisor: 'Supervisor',
     operador: 'Operador'
+  };
+
+  const toggleTheme = () => {
+    setTheme((!theme || theme === 'light') ? 'dark' : 'light');
   };
 
   return (
@@ -101,6 +108,39 @@ export function AppSidebar() {
                 </li>
               );
             })}
+            
+            {/* Separador */}
+            <li className="pt-2 mt-2 border-t border-sidebar-border">
+              <button
+                onClick={toggleTheme}
+                className={cn(
+                  "w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200",
+                  "hover:bg-sidebar-accent/20 text-sidebar-foreground"
+                )}
+              >
+                {(!theme || theme === 'light') ? (
+                  <Moon className="w-5 h-5 text-muted-foreground" />
+                ) : (
+                  <Sun className="w-5 h-5 text-muted-foreground" />
+                )}
+                <span className="text-sm font-medium">
+                  {(!theme || theme === 'light') ? 'Modo Escuro' : 'Modo Claro'}
+                </span>
+              </button>
+            </li>
+            
+            <li>
+              <button
+                onClick={() => setIsSettingsOpen(true)}
+                className={cn(
+                  "w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200",
+                  "hover:bg-sidebar-accent/20 text-sidebar-foreground"
+                )}
+              >
+                <Settings className="w-5 h-5 text-muted-foreground" />
+                <span className="text-sm font-medium">Configurações</span>
+              </button>
+            </li>
           </ul>
         </nav>
 
@@ -114,14 +154,6 @@ export function AppSidebar() {
               <p className="text-sm font-medium text-sidebar-foreground truncate">{user.name}</p>
               <p className="text-xs text-muted-foreground">{roleLabels[user.role]}</p>
             </div>
-            <ThemeToggle />
-            <button
-              onClick={() => setIsSettingsOpen(true)}
-              className="p-2 rounded-lg hover:bg-sidebar-accent/20 transition-colors"
-              title="Configurações"
-            >
-              <Settings className="w-4 h-4 text-muted-foreground" />
-            </button>
             <button
               onClick={logout}
               className="p-2 rounded-lg hover:bg-sidebar-accent/20 transition-colors"

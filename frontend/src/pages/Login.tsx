@@ -98,7 +98,7 @@ export default function Login() {
         </form>
 
         <p className="text-xs text-center text-muted-foreground mt-8">
-          © 2024 Vend. Todos os direitos reservados.
+          © 2025 Vend. Todos os direitos reservados.
         </p>
       </GlassCard>
     </div>
