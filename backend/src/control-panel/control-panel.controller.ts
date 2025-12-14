@@ -1,9 +1,10 @@
 import { Controller, Get, Post, Body, Param, Delete, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
 import { ControlPanelService } from './control-panel.service';
 import { UpdateControlPanelDto, AddBlockPhraseDto, RemoveBlockPhraseDto } from './dto/control-panel.dto';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/roles.decorator';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { Role } from '@prisma/client';
 
 @Controller('control-panel')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -12,7 +13,7 @@ export class ControlPanelController {
 
   // Buscar configurações (global ou por segmento)
   @Get()
-  @Roles('admin', 'supervisor')
+  @Roles(Role.admin, Role.supervisor)
   async findOne(@Query('segmentId') segmentId?: string) {
     const segId = segmentId ? parseInt(segmentId, 10) : undefined;
     return this.controlPanelService.findOne(segId);
@@ -20,14 +21,14 @@ export class ControlPanelController {
 
   // Atualizar configurações
   @Post()
-  @Roles('admin', 'supervisor')
+  @Roles(Role.admin, Role.supervisor)
   async upsert(@Body() dto: UpdateControlPanelDto) {
     return this.controlPanelService.upsert(dto);
   }
 
   // Adicionar frase de bloqueio
   @Post('block-phrases')
-  @Roles('admin', 'supervisor')
+  @Roles(Role.admin, Role.supervisor)
   async addBlockPhrase(
     @Body() dto: AddBlockPhraseDto,
     @Query('segmentId') segmentId?: string,
@@ -38,7 +39,7 @@ export class ControlPanelController {
 
   // Remover frase de bloqueio
   @Delete('block-phrases')
-  @Roles('admin', 'supervisor')
+  @Roles(Role.admin, Role.supervisor)
   async removeBlockPhrase(
     @Body() dto: RemoveBlockPhraseDto,
     @Query('segmentId') segmentId?: string,
@@ -49,7 +50,7 @@ export class ControlPanelController {
 
   // Verificar se pode contatar CPC
   @Get('check-cpc/:phone')
-  @Roles('admin', 'supervisor', 'operator')
+  @Roles(Role.admin, Role.supervisor, Role.operator)
   async checkCPC(
     @Param('phone') phone: string,
     @Query('segmentId') segmentId?: string,
@@ -60,7 +61,7 @@ export class ControlPanelController {
 
   // Verificar se pode reenviar
   @Get('check-resend/:phone')
-  @Roles('admin', 'supervisor', 'operator')
+  @Roles(Role.admin, Role.supervisor, Role.operator)
   async checkResend(
     @Param('phone') phone: string,
     @Query('segmentId') segmentId?: string,
@@ -71,7 +72,7 @@ export class ControlPanelController {
 
   // Marcar contato como CPC
   @Post('mark-cpc/:phone')
-  @Roles('admin', 'supervisor', 'operator')
+  @Roles(Role.admin, Role.supervisor, Role.operator)
   async markAsCPC(
     @Param('phone') phone: string,
     @Body() body: { isCPC: boolean },

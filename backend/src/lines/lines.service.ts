@@ -101,10 +101,10 @@ export class LinesService {
       // Configurar webhook separadamente (aguardar 2 segundos para garantir que a instância está pronta)
       await new Promise(resolve => setTimeout(resolve, 2000));
 
+      // webhook_base64 = true para receber mídia (imagens, áudios, docs) em base64
+      const enableBase64 = createLineDto.receiveMedia === true;
+
       try {
-        // webhook_base64 = true para receber mídia (imagens, áudios, docs) em base64
-        const enableBase64 = createLineDto.receiveMedia === true;
-        
         const webhookData = {
           url: webhookUrl,
           enabled: true,
