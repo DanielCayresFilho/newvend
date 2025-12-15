@@ -471,8 +471,73 @@ export class LinesService {
     // Marcar linha como banida
     await this.update(lineId, { lineStatus: 'ban' });
 
-    // Se a linha estava vinculada a um operador, remover vínculo
-    if (line.linkedTo) {
+    // Buscar todos os operadores vinculados à linha (tabela LineOperator)
+    const lineOperators = await this.prisma.lineOperator.findMany({
+      where: { lineId },
+      include: {
+        user: true,
+      },
+    });
+
+    const operatorIds = lineOperators.map(lo => lo.userId);
+
+    if (operatorIds.length > 0) {
+      console.log(`🔄 [handleBannedLine] Desvinculando ${operatorIds.length} operador(es) da linha banida ${lineId}`);
+
+      // Desvincular todos os operadores da tabela LineOperator
+      await this.prisma.lineOperator.deleteMany({
+        where: { lineId },
+      });
+
+      // Atualizar campos legacy (line e linkedTo)
+      for (const operatorId of operatorIds) {
+        await this.prisma.user.update({
+          where: { id: operatorId },
+          data: { line: null },
+        });
+      }
+
+      // Limpar linkedTo da linha banida
+      await this.prisma.linesStock.update({
+        where: { id: lineId },
+        data: { linkedTo: null },
+      });
+
+      // Tentar atribuir novas linhas aos operadores desvinculados
+      for (const operatorId of operatorIds) {
+        const operator = await this.prisma.user.findUnique({
+          where: { id: operatorId },
+          include: { lineOperators: true },
+        });
+
+        if (!operator || operator.lineOperators.length > 0) {
+          continue; // Operador já tem outra linha ou não existe
+        }
+
+        // Buscar uma nova linha ativa do mesmo segmento
+        const availableLine = await this.prisma.linesStock.findFirst({
+          where: {
+            lineStatus: 'active',
+            segment: line.segment,
+            operators: {
+              none: {}, // Linha sem operadores vinculados
+            },
+          },
+          include: {
+            operators: true,
+          },
+        });
+
+        if (availableLine && availableLine.operators.length < 2) {
+          // Vincular nova linha ao operador usando a tabela LineOperator
+          await this.assignOperatorToLine(availableLine.id, operatorId);
+          console.log(`✅ [handleBannedLine] Linha ${availableLine.phone} atribuída ao operador ${operator.name} (ID: ${operatorId})`);
+        } else {
+          console.warn(`⚠️ [handleBannedLine] Nenhuma linha disponível para substituir a linha banida para o operador ${operator?.name || operatorId}`);
+        }
+      }
+    } else if (line.linkedTo) {
+      // Fallback: se não há operadores na tabela LineOperator mas há linkedTo (legacy)
       await this.prisma.user.update({
         where: { id: line.linkedTo },
         data: { line: null },
@@ -495,11 +560,13 @@ export class LinesService {
           data: { line: availableLine.id },
         });
 
-        console.log(`✅ Linha ${availableLine.phone} atribuída ao operador ${line.linkedTo}`);
+        console.log(`✅ [handleBannedLine] Linha ${availableLine.phone} atribuída ao operador ${line.linkedTo} (legacy)`);
       } else {
-        console.warn(`⚠️ Nenhuma linha disponível para substituir a linha banida`);
+        console.warn(`⚠️ [handleBannedLine] Nenhuma linha disponível para substituir a linha banida`);
       }
     }
+
+    console.log(`✅ [handleBannedLine] Linha ${lineId} marcada como banida e operadores desvinculados`);
   }
 
   async getAvailableLines(segment: number) {
