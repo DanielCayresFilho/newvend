@@ -138,17 +138,13 @@ export class CampaignsProcessor {
           const lineOperators = await this.prisma.lineOperator.findMany({
             where: { lineId },
             include: {
-              user: {
-                where: {
-                  status: 'Online',
-                  role: 'operator',
-                },
-              },
+              user: true,
             },
           });
 
+          // Filtrar apenas operadores online
           const onlineOperators = lineOperators
-            .filter(lo => lo.user.status === 'Online')
+            .filter(lo => lo.user.status === 'Online' && lo.user.role === 'operator')
             .map(lo => lo.user);
 
           // Se não houver operadores online, usar null (sistema)
