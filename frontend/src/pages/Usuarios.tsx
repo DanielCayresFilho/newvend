@@ -43,21 +43,23 @@ const roleLabels = {
 };
 
 // Map API role to frontend role
-const mapRole = (apiRole: string): 'admin' | 'supervisor' | 'operador' => {
+const mapRole = (apiRole: string): 'admin' | 'supervisor' | 'operador' | 'ativador' => {
   switch (apiRole) {
     case 'admin': return 'admin';
     case 'supervisor': return 'supervisor';
     case 'operator': return 'operador';
+    case 'ativador': return 'ativador';
     default: return 'operador';
   }
 };
 
 // Map frontend role to API role
-const mapRoleToApi = (role: string): 'admin' | 'supervisor' | 'operator' => {
+const mapRoleToApi = (role: string): 'admin' | 'supervisor' | 'operator' | 'ativador' => {
   switch (role) {
     case 'admin': return 'admin';
     case 'supervisor': return 'supervisor';
     case 'operador': return 'operator';
+    case 'ativador': return 'ativador';
     default: return 'operator';
   }
 };
@@ -320,6 +322,7 @@ export default function Usuarios() {
             <SelectItem value="admin">Administrador</SelectItem>
             <SelectItem value="supervisor">Supervisor</SelectItem>
             <SelectItem value="operador">Operador</SelectItem>
+            <SelectItem value="ativador">Ativador</SelectItem>
           </SelectContent>
         </Select>
       </div>

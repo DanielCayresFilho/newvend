@@ -13,14 +13,14 @@ export class LinesController {
   constructor(private readonly linesService: LinesService) {}
 
   @Post()
-  @Roles(Role.admin)
+  @Roles(Role.admin, Role.ativador)
   create(@Body() createLineDto: CreateLineDto) {
     console.log('📝 Dados recebidos para criar linha:', createLineDto);
     return this.linesService.create(createLineDto);
   }
 
   @Get()
-  @Roles(Role.admin, Role.supervisor)
+  @Roles(Role.admin, Role.supervisor, Role.ativador)
   findAll(@Query() filters: any) {
     return this.linesService.findAll(filters);
   }
@@ -53,7 +53,7 @@ export class LinesController {
   }
 
   @Get('evolutions')
-  @Roles(Role.admin)
+  @Roles(Role.admin, Role.ativador)
   getEvolutions() {
     return this.linesService.getEvolutions();
   }
@@ -71,13 +71,13 @@ export class LinesController {
   }
 
   @Get(':id')
-  @Roles(Role.admin)
+  @Roles(Role.admin, Role.ativador)
   findOne(@Param('id') id: string) {
     return this.linesService.findOne(+id);
   }
 
   @Get(':id/qrcode')
-  @Roles(Role.admin)
+  @Roles(Role.admin, Role.ativador)
   getQRCode(@Param('id') id: string) {
     return this.linesService.getQRCode(+id);
   }

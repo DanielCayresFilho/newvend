@@ -12,6 +12,7 @@ enum Role {
   admin
   operator
   supervisor
+  ativador
 }
 
 enum Status {
@@ -37,17 +38,17 @@ enum Speed {
 
 // Models
 model User {
-  id              Int             @id @default(autoincrement())
-  name            String
-  email           String          @unique
-  password        String
-  role            Role
-  segment         Int?
-  line            Int?
-  status          Status          @default(Offline)
-  oneToOneActive  Boolean         @default(false) // Se true, operador pode chamar clientes no 1x1
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  id             Int      @id @default(autoincrement())
+  name           String
+  email          String   @unique
+  password       String
+  role           Role
+  segment        Int?
+  line           Int?
+  status         Status   @default(Offline)
+  oneToOneActive Boolean  @default(false) // Se true, operador pode chamar clientes no 1x1
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@index([email])
   @@index([segment])
@@ -56,35 +57,35 @@ model User {
 }
 
 model Segment {
-  id            Int             @id @default(autoincrement())
-  name          String          @unique
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([name])
 }
 
 model Tabulation {
-  id            Int             @id @default(autoincrement())
-  name          String
-  isCPC         Boolean         @default(false)
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  id        Int      @id @default(autoincrement())
+  name      String
+  isCPC     Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([name])
 }
 
 model Contact {
-  id            Int             @id @default(autoincrement())
-  name          String
-  phone         String
-  segment       Int?
-  cpf           String?
-  contract      String?
-  isCPC         Boolean         @default(false) // Se true, contato foi marcado como CPC
-  lastCPCAt     DateTime?       // Última vez que foi marcado como CPC (para temporizador)
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  id        Int       @id @default(autoincrement())
+  name      String
+  phone     String
+  segment   Int?
+  cpf       String?
+  contract  String?
+  isCPC     Boolean   @default(false) // Se true, contato foi marcado como CPC
+  lastCPCAt DateTime? // Última vez que foi marcado como CPC (para temporizador)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   @@index([phone])
   @@index([cpf])
@@ -93,21 +94,21 @@ model Contact {
 }
 
 model Campaign {
-  id                Int       @id @default(autoincrement())
+  id                Int      @id @default(autoincrement())
   name              String
   contactName       String
   contactPhone      String
   contactSegment    Int?
-  dateTime          DateTime  @default(now())
+  dateTime          DateTime @default(now())
   lineReceptor      Int?
-  response          Boolean   @default(false)
+  response          Boolean  @default(false)
   speed             Speed
-  retryCount        Int       @default(0)
-  useTemplate       Boolean   @default(false)
+  retryCount        Int      @default(0)
+  useTemplate       Boolean  @default(false)
   templateId        Int?
-  templateVariables String?   @db.Text
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  templateVariables String?  @db.Text
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   @@index([contactPhone])
   @@index([contactSegment])
@@ -118,31 +119,31 @@ model Campaign {
 }
 
 model BlockList {
-  id            Int       @id @default(autoincrement())
-  name          String?
-  phone         String?
-  cpf           String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id        Int      @id @default(autoincrement())
+  name      String?
+  phone     String?
+  cpf       String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([phone])
   @@index([cpf])
 }
 
 model LinesStock {
-  id              Int           @id @default(autoincrement())
-  phone           String        @unique
-  lineStatus      LineStatus    @default(active)
-  segment         Int?
-  linkedTo        Int?
-  evolutionName   String
-  oficial         Boolean       @default(false)
-  token           String?
-  businessID      String?
-  numberId        String?
-  receiveMedia    Boolean       @default(false) // Se true, ativa webhook_base64 para receber imagens/áudios/docs
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id            Int        @id @default(autoincrement())
+  phone         String     @unique
+  lineStatus    LineStatus @default(active)
+  segment       Int?
+  linkedTo      Int?
+  evolutionName String
+  oficial       Boolean    @default(false)
+  token         String?
+  businessID    String?
+  numberId      String?
+  receiveMedia  Boolean    @default(false) // Se true, ativa webhook_base64 para receber imagens/áudios/docs
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
 
   @@index([phone])
   @@index([lineStatus])
@@ -152,31 +153,31 @@ model LinesStock {
 }
 
 model Evolution {
-  id              Int           @id @default(autoincrement())
-  evolutionName   String        @unique
-  evolutionUrl    String
-  evolutionKey    String
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id            Int      @id @default(autoincrement())
+  evolutionName String   @unique
+  evolutionUrl  String
+  evolutionKey  String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@index([evolutionName])
 }
 
 model Conversation {
-  id              Int         @id @default(autoincrement())
-  contactName     String
-  contactPhone    String
-  segment         Int?
-  userName        String?
-  userLine        Int?
-  message         String      @db.Text
-  sender          Sender
-  datetime        DateTime    @default(now())
-  tabulation      Int?
-  messageType     String      @default("text")
-  mediaUrl        String?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id           Int      @id @default(autoincrement())
+  contactName  String
+  contactPhone String
+  segment      Int?
+  userName     String?
+  userLine     Int?
+  message      String   @db.Text
+  sender       Sender
+  datetime     DateTime @default(now())
+  tabulation   Int?
+  messageType  String   @default("text")
+  mediaUrl     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@index([contactPhone])
   @@index([segment])
@@ -186,27 +187,27 @@ model Conversation {
 }
 
 model Tag {
-  id              Int         @id @default(autoincrement())
-  name            String      @unique
-  description     String?
-  segment         Int?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  segment     Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([name])
   @@index([segment])
 }
 
 model ApiLog {
-  id              Int         @id @default(autoincrement())
+  id              Int      @id @default(autoincrement())
   endpoint        String
   method          String
-  requestPayload  String      @db.Text
-  responsePayload String      @db.Text
+  requestPayload  String   @db.Text
+  responsePayload String   @db.Text
   statusCode      Int
   ipAddress       String?
   userAgent       String?
-  createdAt       DateTime    @default(now())
+  createdAt       DateTime @default(now())
 
   @@index([endpoint])
   @@index([method])
@@ -216,22 +217,22 @@ model ApiLog {
 
 // Template para mensagens de campanha (vinculado a segmento)
 model Template {
-  id              Int         @id @default(autoincrement())
-  name            String
-  language        String      @default("pt_BR")
-  category        String      @default("MARKETING")
-  segmentId       Int?        // null = global (todos os segmentos)
-  lineId          Int?        // Mantido para compatibilidade (pode ser removido futuramente)
-  namespace       String?
-  status          String      @default("APPROVED")
-  headerType      String?
-  headerContent   String?     @db.Text
-  bodyText        String      @db.Text
-  footerText      String?
-  buttons         String?     @db.Text
-  variables       String?     @db.Text
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id            Int      @id @default(autoincrement())
+  name          String
+  language      String   @default("pt_BR")
+  category      String   @default("MARKETING")
+  segmentId     Int? // null = global (todos os segmentos)
+  lineId        Int? // Mantido para compatibilidade (pode ser removido futuramente)
+  namespace     String?
+  status        String   @default("APPROVED")
+  headerType    String?
+  headerContent String?  @db.Text
+  bodyText      String   @db.Text
+  footerText    String?
+  buttons       String?  @db.Text
+  variables     String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@index([name])
   @@index([segmentId])
@@ -241,18 +242,18 @@ model Template {
 
 // Histórico de envios de templates
 model TemplateMessage {
-  id              Int         @id @default(autoincrement())
-  templateId      Int
-  contactPhone    String
-  contactName     String?
-  lineId          Int
-  status          String      @default("SENT")
-  messageId       String?
-  variables       String?     @db.Text
-  errorMessage    String?
-  campaignId      Int?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id           Int      @id @default(autoincrement())
+  templateId   Int
+  contactPhone String
+  contactName  String?
+  lineId       Int
+  status       String   @default("SENT")
+  messageId    String?
+  variables    String?  @db.Text
+  errorMessage String?
+  campaignId   Int?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@index([templateId])
   @@index([contactPhone])
@@ -264,27 +265,27 @@ model TemplateMessage {
 
 // Painel de Controle - Configurações globais do sistema
 model ControlPanel {
-  id                      Int         @id @default(autoincrement())
-  segmentId               Int?        // null = global (todos os segmentos)
+  id        Int  @id @default(autoincrement())
+  segmentId Int? // null = global (todos os segmentos)
 
   // Frases de bloqueio automático (JSON array de strings)
-  blockPhrases            String?     @db.Text
-  blockTabulationId       Int?        // Tabulação padrão ao bloquear
+  blockPhrases      String? @db.Text
+  blockTabulationId Int? // Tabulação padrão ao bloquear
 
   // Temporizador de CPC (em horas)
-  cpcCooldownHours        Int         @default(24)
+  cpcCooldownHours Int @default(24)
 
   // Reenvio - Intervalo mínimo entre campanhas para o mesmo telefone (em horas)
-  resendCooldownHours     Int         @default(24)
+  resendCooldownHours Int @default(24)
 
   // Repescagem - Controle de mensagens seguidas do operador
-  repescagemEnabled       Boolean     @default(false)
-  repescagemMaxMessages   Int         @default(2)    // Quantas msgs seguidas antes de bloquear
-  repescagemCooldownHours Int         @default(24)   // Tempo de espera após bloqueio
-  repescagemMaxAttempts   Int         @default(2)    // Limite de repescagens (0 = ilimitado)
+  repescagemEnabled       Boolean @default(false)
+  repescagemMaxMessages   Int     @default(2) // Quantas msgs seguidas antes de bloquear
+  repescagemCooldownHours Int     @default(24) // Tempo de espera após bloqueio
+  repescagemMaxAttempts   Int     @default(2) // Limite de repescagens (0 = ilimitado)
 
-  createdAt               DateTime    @default(now())
-  updatedAt               DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([segmentId])
   @@index([segmentId])
@@ -292,16 +293,16 @@ model ControlPanel {
 
 // Histórico de repescagem por contato
 model ContactRepescagem {
-  id              Int         @id @default(autoincrement())
-  contactPhone    String
-  operatorId      Int
-  messagesCount   Int         @default(0)     // Contagem de msgs seguidas do operador
-  attempts        Int         @default(0)     // Quantidade de repescagens realizadas
-  blockedUntil    DateTime?                   // Bloqueado até essa data
-  permanentBlock  Boolean     @default(false) // Se true, só libera se cliente responder
-  lastMessageAt   DateTime    @default(now())
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id             Int       @id @default(autoincrement())
+  contactPhone   String
+  operatorId     Int
+  messagesCount  Int       @default(0) // Contagem de msgs seguidas do operador
+  attempts       Int       @default(0) // Quantidade de repescagens realizadas
+  blockedUntil   DateTime? // Bloqueado até essa data
+  permanentBlock Boolean   @default(false) // Se true, só libera se cliente responder
+  lastMessageAt  DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@unique([contactPhone, operatorId])
   @@index([contactPhone])
@@ -311,11 +312,11 @@ model ContactRepescagem {
 
 // Histórico de envio para controle de reenvio
 model SendHistory {
-  id              Int         @id @default(autoincrement())
-  contactPhone    String
-  campaignId      Int?
-  lineId          Int?
-  sentAt          DateTime    @default(now())
+  id           Int      @id @default(autoincrement())
+  contactPhone String
+  campaignId   Int?
+  lineId       Int?
+  sentAt       DateTime @default(now())
 
   @@index([contactPhone])
   @@index([sentAt])

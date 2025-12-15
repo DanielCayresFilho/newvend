@@ -35,6 +35,8 @@ const mapRole = (apiRole: string): UserRole => {
       return 'supervisor';
     case 'operator':
       return 'operador';
+    case 'ativador':
+      return 'ativador';
     default:
       return 'operador';
   }

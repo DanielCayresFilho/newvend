@@ -54,7 +54,7 @@ export interface LoginResponse {
     id: number;
     name: string;
     email: string;
-    role: 'admin' | 'supervisor' | 'operator';
+    role: 'admin' | 'supervisor' | 'operator' | 'ativador';
     segment: number | null;
     line: number | null;
     status: 'Online' | 'Offline';

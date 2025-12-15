@@ -48,7 +48,7 @@ const menuItems: MenuItem[] = [
   { title: "Relatórios", url: "/relatorios", icon: BarChart3, color: "text-success", roles: ['supervisor', 'admin'] },
   { title: "Painel Controle", url: "/painel-controle", icon: Sliders, color: "text-purple-500", roles: ['supervisor', 'admin'] },
   { title: "Evolution", url: "/evolution", icon: RefreshCw, color: "text-primary", roles: ['admin'] },
-  { title: "Linhas", url: "/linhas", icon: Phone, color: "text-whatsapp", roles: ['admin'] },
+  { title: "Linhas", url: "/linhas", icon: Phone, color: "text-whatsapp", roles: ['admin', 'ativador'] },
   { title: "Usuários", url: "/usuarios", icon: Users, color: "text-warning", roles: ['admin'] },
   { title: "Tags", url: "/tags", icon: Tags, color: "text-cyan", roles: ['admin'] },
   { title: "Logs API", url: "/logs", icon: Code, color: "text-destructive", roles: ['admin'] },
@@ -68,7 +68,8 @@ export function AppSidebar() {
   const roleLabels: Record<UserRole, string> = {
     admin: 'Administrador',
     supervisor: 'Supervisor',
-    operador: 'Operador'
+    operador: 'Operador',
+    ativador: 'Ativador'
   };
 
   const toggleTheme = () => {
