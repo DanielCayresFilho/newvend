@@ -19,7 +19,7 @@ export class EvolutionController {
   }
 
   @Get()
-  @Roles(Role.admin)
+  @Roles(Role.admin, Role.ativador)
   findAll() {
     return this.evolutionService.findAll();
   }
