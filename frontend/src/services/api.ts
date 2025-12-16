@@ -248,6 +248,11 @@ export interface Line {
   receiveMedia?: boolean;
   createdAt: string;
   updatedAt: string;
+  operators?: Array<{
+    id: number;
+    name: string;
+    email: string;
+  }>;
 }
 
 export interface CreateLineData {

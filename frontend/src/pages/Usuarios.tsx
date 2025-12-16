@@ -26,6 +26,7 @@ interface User {
   segment?: number;
   line?: number;
   lineName?: string;
+  lineEvolutionName?: string;
   isOnline: boolean;
   oneToOneActive?: boolean;
 }
@@ -100,17 +101,21 @@ export default function Usuarios() {
         linesService.list()
       ]);
 
-      setUsers(usersData.map((u: ApiUser) => ({
-        id: String(u.id),
-        name: u.name,
-        email: u.email,
-        role: mapRole(u.role),
-        segment: u.segment ?? undefined,
-        line: u.line ?? undefined,
-        lineName: linesData.find(l => l.id === u.line)?.phone,
-        isOnline: u.status === 'Online',
-        oneToOneActive: u.oneToOneActive ?? false
-      })));
+      setUsers(usersData.map((u: ApiUser) => {
+        const userLine = linesData.find(l => l.id === u.line);
+        return {
+          id: String(u.id),
+          name: u.name,
+          email: u.email,
+          role: mapRole(u.role),
+          segment: u.segment ?? undefined,
+          line: u.line ?? undefined,
+          lineName: userLine?.phone,
+          lineEvolutionName: userLine?.evolutionName,
+          isOnline: u.status === 'Online',
+          oneToOneActive: u.oneToOneActive ?? false
+        };
+      }));
 
       setSegments(segmentsData);
       setLines(linesData);
@@ -142,6 +147,11 @@ export default function Usuarios() {
       key: "lineName", 
       label: "Linha",
       render: (user) => user.lineName || '-'
+    },
+    { 
+      key: "lineEvolutionName", 
+      label: "Evolution",
+      render: (user) => user.lineEvolutionName || '-'
     },
     {
       key: "isOnline",
@@ -231,17 +241,24 @@ export default function Usuarios() {
         }
 
         const updated = await usersService.update(Number(editingUser.id), updateData);
-        setUsers(users.map(u => u.id === editingUser.id ? {
-          id: String(updated.id),
-          name: updated.name,
-          email: updated.email,
-          role: mapRole(updated.role),
-          segment: updated.segment ?? undefined,
-          line: updated.line ?? undefined,
-          lineName: lines.find(l => l.id === updated.line)?.phone,
-          isOnline: updated.status === 'Online',
-          oneToOneActive: updated.oneToOneActive ?? false
-        } : u));
+        setUsers(users.map(u => {
+          if (u.id === editingUser.id) {
+            const userLine = lines.find(l => l.id === updated.line);
+            return {
+              id: String(updated.id),
+              name: updated.name,
+              email: updated.email,
+              role: mapRole(updated.role),
+              segment: updated.segment ?? undefined,
+              line: updated.line ?? undefined,
+              lineName: userLine?.phone,
+              lineEvolutionName: userLine?.evolutionName,
+              isOnline: updated.status === 'Online',
+              oneToOneActive: updated.oneToOneActive ?? false
+            };
+          }
+          return u;
+        }));
         toast({
           title: "Usuário atualizado",
           description: `O usuário ${updated.name} foi atualizado com sucesso`,
@@ -256,6 +273,7 @@ export default function Usuarios() {
           line: formData.line ? Number(formData.line) : undefined,
           oneToOneActive: formData.oneToOneActive,
         });
+        const newUserLine = lines.find(l => l.id === created.line);
         setUsers([...users, {
           id: String(created.id),
           name: created.name,
@@ -263,7 +281,8 @@ export default function Usuarios() {
           role: mapRole(created.role),
           segment: created.segment ?? undefined,
           line: created.line ?? undefined,
-          lineName: lines.find(l => l.id === created.line)?.phone,
+          lineName: newUserLine?.phone,
+          lineEvolutionName: newUserLine?.evolutionName,
           isOnline: created.status === 'Online',
           oneToOneActive: created.oneToOneActive ?? false
         }]);

@@ -32,6 +32,11 @@ interface Line {
   type: 'official' | 'evolution';
   evolutionName?: string;
   segment?: number;
+  operators?: Array<{
+    id: number;
+    name: string;
+    email: string;
+  }>;
 }
 
 export default function Linhas() {
@@ -76,7 +81,8 @@ export default function Linhas() {
         status: l.lineStatus === 'active' ? 'active' : 'banned',
         type: l.oficial ? 'official' : 'evolution',
         evolutionName: l.evolutionName,
-        segment: l.segment ?? undefined
+        segment: l.segment ?? undefined,
+        operators: l.operators || []
       })));
 
       setSegments(segmentsData);
@@ -114,7 +120,28 @@ export default function Linhas() {
     //     </Badge>
     //   )
     // },
-    { key: "evolutionName", label: "Evolution" }
+    { 
+      key: "evolutionName", 
+      label: "Evolution" 
+    },
+    {
+      key: "operators",
+      label: "Operador(es)",
+      render: (line) => {
+        if (!line.operators || line.operators.length === 0) {
+          return <span className="text-muted-foreground">-</span>;
+        }
+        return (
+          <div className="flex flex-col gap-1">
+            {line.operators.map((op) => (
+              <span key={op.id} className="text-sm">
+                {op.name}
+              </span>
+            ))}
+          </div>
+        );
+      }
+    }
   ];
 
   const handleAdd = () => {

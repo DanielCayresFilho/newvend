@@ -261,12 +261,35 @@ export class LinesService {
         }
       : validFilters;
 
-    return this.prisma.linesStock.findMany({
+    const lines = await this.prisma.linesStock.findMany({
       where,
       orderBy: {
         createdAt: 'desc',
       },
+      include: {
+        operators: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
     });
+
+    // Mapear para incluir operadores vinculados
+    return lines.map(line => ({
+      ...line,
+      operators: line.operators.map(lo => ({
+        id: lo.user.id,
+        name: lo.user.name,
+        email: lo.user.email,
+      })),
+    }));
   }
 
   async findOne(id: number) {
