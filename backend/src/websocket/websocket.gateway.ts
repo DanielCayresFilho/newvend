@@ -279,6 +279,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
             number: data.contactPhone.replace(/\D/g, ''),
             mediaUrl: data.mediaUrl,
             caption: data.message,
+            mediatype: 'image', // Evolution API requer mediatype
           },
           {
             headers: { 'apikey': evolution.evolutionKey },
@@ -293,47 +294,81 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
           ? fileName.replace(/^\d+-/, '').replace(/-\d+\./, '.')
           : fileName;
         
-        // Determinar mimetype baseado na extensão
-        const getMimeType = (filename: string): string => {
+        // Determinar mediatype baseado na extensão (Evolution API usa "mediatype" não "mimetype")
+        const getMediaType = (filename: string): string => {
           const ext = filename.split('.').pop()?.toLowerCase();
-          const mimeTypes: Record<string, string> = {
-            'pdf': 'application/pdf',
-            'doc': 'application/msword',
-            'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            'xls': 'application/vnd.ms-excel',
-            'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          };
-          return mimeTypes[ext || ''] || 'application/pdf';
+          // Evolution API espera: document, image, video, audio
+          if (['pdf', 'doc', 'docx', 'xls', 'xlsx'].includes(ext || '')) {
+            return 'document';
+          }
+          if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext || '')) {
+            return 'image';
+          }
+          if (['mp4', 'mpeg', 'avi', 'mov'].includes(ext || '')) {
+            return 'video';
+          }
+          if (['mp3', 'ogg', 'wav', 'm4a'].includes(ext || '')) {
+            return 'audio';
+          }
+          return 'document'; // Default para documentos
         };
         
         try {
-          apiResponse = await axios.post(
-            `${evolution.evolutionUrl}/message/sendMedia/${instanceName}`,
-            {
-              number: data.contactPhone.replace(/\D/g, ''),
-              mediaUrl: data.mediaUrl,
-              fileName: cleanFileName,
-              mimetype: getMimeType(cleanFileName),
-            },
-            {
-              headers: { 'apikey': evolution.evolutionKey },
-            }
-          );
-        } catch (mediaError) {
-          // Se sendMedia falhar, tentar sendDocument (se disponível)
-          console.log('⚠️ [WebSocket] sendMedia falhou, tentando sendDocument...', mediaError.response?.data);
+          const payload = {
+            number: data.contactPhone.replace(/\D/g, ''),
+            mediaUrl: data.mediaUrl,
+            fileName: cleanFileName,
+            mediatype: getMediaType(cleanFileName), // Evolution API requer "mediatype"
+          };
+          
+          console.log(`📤 [WebSocket] Enviando documento via sendMedia:`, JSON.stringify(payload, null, 2));
           
           apiResponse = await axios.post(
-            `${evolution.evolutionUrl}/message/sendDocument/${instanceName}`,
-            {
-              number: data.contactPhone.replace(/\D/g, ''),
-              mediaUrl: data.mediaUrl,
-              fileName: cleanFileName,
-            },
+            `${evolution.evolutionUrl}/message/sendMedia/${instanceName}`,
+            payload,
             {
               headers: { 'apikey': evolution.evolutionKey },
             }
           );
+          
+          console.log(`✅ [WebSocket] Documento enviado com sucesso via sendMedia`);
+        } catch (mediaError: any) {
+          // Log detalhado do erro
+          console.error('❌ [WebSocket] sendMedia falhou:', {
+            status: mediaError.response?.status,
+            statusText: mediaError.response?.statusText,
+            data: JSON.stringify(mediaError.response?.data, null, 2),
+            message: mediaError.message,
+          });
+          
+          // Se sendMedia falhar, tentar sendDocument (se disponível)
+          try {
+            const payload = {
+              number: data.contactPhone.replace(/\D/g, ''),
+              mediaUrl: data.mediaUrl,
+              fileName: cleanFileName,
+            };
+            
+            console.log(`📤 [WebSocket] Tentando enviar documento via sendDocument:`, JSON.stringify(payload, null, 2));
+            
+            apiResponse = await axios.post(
+              `${evolution.evolutionUrl}/message/sendDocument/${instanceName}`,
+              payload,
+              {
+                headers: { 'apikey': evolution.evolutionKey },
+              }
+            );
+            
+            console.log(`✅ [WebSocket] Documento enviado com sucesso via sendDocument`);
+          } catch (documentError: any) {
+            console.error('❌ [WebSocket] sendDocument também falhou:', {
+              status: documentError.response?.status,
+              statusText: documentError.response?.statusText,
+              data: JSON.stringify(documentError.response?.data, null, 2),
+              message: documentError.message,
+            });
+            throw documentError; // Re-throw para ser capturado pelo catch externo
+          }
         }
       } else {
         apiResponse = await axios.post(
@@ -384,9 +419,24 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
       this.emitToSupervisors(user.segment, 'new_message', { message: conversation });
 
       return { success: true, conversation };
-    } catch (error) {
-      console.error('❌ [WebSocket] Erro ao enviar mensagem:', error.response?.data || error.message);
-      const errorMessage = `Erro ao enviar mensagem: ${error.message}`;
+    } catch (error: any) {
+      console.error('❌ [WebSocket] Erro ao enviar mensagem:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: JSON.stringify(error.response?.data, null, 2),
+        message: error.message,
+        stack: error.stack,
+      });
+      
+      // Extrair mensagem de erro mais detalhada
+      let errorMessage = `Erro ao enviar mensagem: ${error.message}`;
+      if (error.response?.data?.message) {
+        const errorData = Array.isArray(error.response.data.message) 
+          ? error.response.data.message.join(', ')
+          : error.response.data.message;
+        errorMessage = `Erro ao enviar mensagem: ${errorData}`;
+      }
+      
       client.emit('message-error', { error: errorMessage });
       return { error: errorMessage };
     }
@@ -432,7 +482,10 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
 
   // Método para emitir mensagens recebidas via webhook
   async emitNewMessage(conversation: any) {
-    console.log(`📤 Emitindo new_message para contactPhone: ${conversation.contactPhone}`);
+    console.log(`📤 Emitindo new_message para contactPhone: ${conversation.contactPhone}`, {
+      userId: conversation.userId,
+      userLine: conversation.userLine,
+    });
     
     // Emitir para o operador específico que está atendendo (userId)
     if (conversation.userId) {
@@ -442,25 +495,56 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
           where: { id: conversation.userId },
         });
         if (user) {
-          console.log(`  → Enviando para ${user.name} (${user.role}) - operador específico`);
+          console.log(`  → Enviando para ${user.name} (${user.role}) - operador específico (userId: ${conversation.userId})`);
           // Usar underscore para corresponder ao frontend: new_message
           this.server.to(socketId).emit('new_message', { message: conversation });
+        } else {
+          console.warn(`  ⚠️ Operador ${conversation.userId} não encontrado no banco`);
         }
+      } else {
+        console.warn(`  ⚠️ Operador ${conversation.userId} não está conectado via WebSocket`);
       }
-    } else if (conversation.userLine) {
-      // Fallback: se não tiver userId, enviar para todos os operadores da linha (compatibilidade)
-      const lineOperators = await this.prisma.lineOperator.findMany({
-        where: { lineId: conversation.userLine },
-        include: { user: true },
-      });
+    }
+    
+    // Se não tiver userId OU se o userId não estiver conectado, enviar para todos os operadores online da linha
+    if (!conversation.userId || !this.connectedUsers.has(conversation.userId)) {
+      if (conversation.userLine) {
+        console.log(`  → Fallback: Enviando para todos os operadores online da linha ${conversation.userLine}`);
+        const lineOperators = await this.prisma.lineOperator.findMany({
+          where: { lineId: conversation.userLine },
+          include: { user: true },
+        });
 
-      lineOperators.forEach(lo => {
-        const socketId = this.connectedUsers.get(lo.userId);
-        if (socketId) {
-          console.log(`  → Enviando para ${lo.user.name} (${lo.user.role}) - fallback`);
-          this.server.to(socketId).emit('new_message', { message: conversation });
+        const onlineLineOperators = lineOperators.filter(lo => 
+          lo.user.status === 'Online' && lo.user.role === 'operator'
+        );
+
+        console.log(`  → Encontrados ${onlineLineOperators.length} operador(es) online na linha ${conversation.userLine}`);
+
+        onlineLineOperators.forEach(lo => {
+          const socketId = this.connectedUsers.get(lo.userId);
+          if (socketId) {
+            console.log(`  → Enviando para ${lo.user.name} (${lo.user.role}) - operador da linha`);
+            this.server.to(socketId).emit('new_message', { message: conversation });
+          } else {
+            console.warn(`  ⚠️ Operador ${lo.user.name} (${lo.userId}) não está conectado via WebSocket`);
+          }
+        });
+
+        // Se não encontrou nenhum operador online na linha, logar para debug
+        if (onlineLineOperators.length === 0) {
+          console.warn(`  ⚠️ Nenhum operador online encontrado na linha ${conversation.userLine} para receber a mensagem`);
+          console.log(`  → Operadores vinculados à linha:`, lineOperators.map(lo => ({
+            userId: lo.userId,
+            name: lo.user.name,
+            status: lo.user.status,
+            role: lo.user.role,
+            connected: this.connectedUsers.has(lo.userId),
+          })));
         }
-      });
+      } else {
+        console.warn(`  ⚠️ Conversa sem userId e sem userLine - não é possível enviar`);
+      }
     }
 
     // Emitir para supervisores do segmento

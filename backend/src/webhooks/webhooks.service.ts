@@ -86,12 +86,29 @@ export class WebhooksService {
               contains: phoneNumber,
             },
           },
+          include: {
+            operators: {
+              include: {
+                user: true,
+              },
+            },
+          },
         });
 
         if (!line) {
-          console.warn('Linha não encontrada para o número:', phoneNumber);
+          console.warn('⚠️ [Webhook] Linha não encontrada para o número:', phoneNumber);
           return { status: 'ignored', reason: 'Line not found' };
         }
+
+        console.log(`🔍 [Webhook] Linha encontrada: ID ${line.id}, Phone: ${line.phone}`, {
+          operadoresVinculados: line.operators.length,
+          operadores: line.operators.map(lo => ({
+            userId: lo.userId,
+            userName: lo.user.name,
+            status: lo.user.status,
+            role: lo.user.role,
+          })),
+        });
 
         // Processar mídia base64 se a linha tiver receiveMedia ativado
         if (line.receiveMedia && messageType !== 'text') {
@@ -187,14 +204,30 @@ export class WebhooksService {
         const assignedOperatorId = await this.linesService.assignInboundMessageToOperator(line.id, from);
         console.log(`📋 [Webhook] Mensagem de ${from} atribuída ao operador ${assignedOperatorId || 'nenhum (sem operadores online)'}`);
 
+        // Se não encontrou operador, tentar encontrar qualquer operador online da linha (mesmo que não tenha conversa ativa)
+        let finalOperatorId = assignedOperatorId;
+        if (!finalOperatorId && line.operators && line.operators.length > 0) {
+          // Buscar qualquer operador online da linha
+          const anyOnlineOperator = line.operators.find(lo => 
+            lo.user.status === 'Online' && lo.user.role === 'operator'
+          );
+          
+          if (anyOnlineOperator) {
+            finalOperatorId = anyOnlineOperator.userId;
+            console.log(`✅ [Webhook] Atribuindo mensagem a operador online disponível: ${anyOnlineOperator.user.name} (ID: ${finalOperatorId})`);
+          } else {
+            console.warn(`⚠️ [Webhook] Nenhum operador online encontrado na linha ${line.id} mesmo após verificação de fallback`);
+          }
+        }
+
         // Criar conversa
         const conversation = await this.conversationsService.create({
           contactName: contact.name,
           contactPhone: from,
           segment: line.segment,
-          userName: null,
+          userName: finalOperatorId ? line.operators.find(lo => lo.userId === finalOperatorId)?.user.name || null : null,
           userLine: line.id,
-          userId: assignedOperatorId, // Operador específico que vai atender
+          userId: finalOperatorId, // Operador específico que vai atender (ou null se não houver)
           message: messageText,
           sender: 'contact',
           messageType,

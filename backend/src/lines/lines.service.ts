@@ -689,13 +689,40 @@ export class LinesService {
       },
     });
 
+    console.log(`🔍 [LinesService] Buscando operadores para linha ${lineId}:`, {
+      totalVinculados: lineOperators.length,
+      operadores: lineOperators.map(lo => ({
+        userId: lo.userId,
+        userName: lo.user.name,
+        status: lo.user.status,
+        role: lo.user.role,
+      })),
+    });
+
     // Filtrar apenas operadores online
     const onlineOperators = lineOperators
       .filter(lo => lo.user.status === 'Online' && lo.user.role === 'operator')
       .map(lo => lo.user);
 
+    console.log(`🔍 [LinesService] Operadores online na linha ${lineId}:`, {
+      totalOnline: onlineOperators.length,
+      operadores: onlineOperators.map(op => ({
+        id: op.id,
+        name: op.name,
+        status: op.status,
+      })),
+    });
+
     if (onlineOperators.length === 0) {
       console.log(`⚠️ [LinesService] Nenhum operador online na linha ${lineId}`);
+      
+      // Verificar se há operadores vinculados mas offline
+      const offlineOperators = lineOperators.filter(lo => lo.user.status !== 'Online');
+      if (offlineOperators.length > 0) {
+        console.log(`ℹ️ [LinesService] Há ${offlineOperators.length} operador(es) vinculado(s) mas offline:`, 
+          offlineOperators.map(lo => `${lo.user.name} (${lo.user.status})`));
+      }
+      
       return null;
     }
 
