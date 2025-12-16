@@ -505,75 +505,59 @@ export class ControlPanelService {
           continue;
         }
 
-        // Encontrar próxima linha disponível (com menos de 2 operadores)
+        // LÓGICA SIMPLIFICADA: 
+        // 1. Operador tem linha? Não -> atribuir primeira linha disponível
+        // 2. Atualizar segmento da linha para o segmento do operador
+        // 3. Próximo operador
         let assignedLine = null;
-        let attempts = 0;
-        const maxAttempts = availableLines.length > 0 ? availableLines.length * 3 : 0; // Aumentar tentativas
 
-        while (!assignedLine && attempts < maxAttempts && availableLines.length > 0) {
-          const candidateLine = availableLines[lineIndex % availableLines.length];
-          
-          // IMPORTANTE: Verificar se a linha pertence ao mesmo segmento do operador
-          // Linhas com segmento null podem ser atribuídas a qualquer operador
-          // Linhas com segmento específico só podem ser atribuídas a operadores do mesmo segmento
-          if (candidateLine.segment !== null && candidateLine.segment !== operator.segment) {
-            lineIndex++;
-            attempts++;
-            continue;
-          }
-          
-          // Se a linha tem segmento null e o operador tem segmento, a linha será atualizada depois
-          // Se ambos são null, pode atribuir
-          // Se ambos têm o mesmo segmento, pode atribuir
-          
+        for (const candidateLine of availableLines) {
           // Verificar quantos operadores já estão vinculados
           const operatorsCount = await (this.prisma as any).lineOperator.count({
             where: { lineId: candidateLine.id },
           });
 
-          if (operatorsCount < 2) {
-            // Verificar se operador já está vinculado a esta linha
-            const existing = await (this.prisma as any).lineOperator.findUnique({
-              where: {
-                lineId_userId: {
-                  lineId: candidateLine.id,
-                  userId: operator.id,
-                },
-              },
-            }).catch(() => null); // Se não existe a constraint, retornar null
+          // Se linha já tem 2 operadores, pular
+          if (operatorsCount >= 2) {
+            continue;
+          }
 
-            if (!existing) {
-              // Verificar se a linha já tem operadores de outro segmento
-              const existingOperators = await (this.prisma as any).lineOperator.findMany({
-                where: { lineId: candidateLine.id },
-                include: { user: true },
-              });
+          // Verificar se operador já está vinculado a esta linha
+          const existing = await (this.prisma as any).lineOperator.findFirst({
+            where: {
+              lineId: candidateLine.id,
+              userId: operator.id,
+            },
+          }).catch(() => null);
 
-              // Se a linha já tem operadores, verificar se são do mesmo segmento
-              if (existingOperators.length > 0) {
-                const allSameSegment = existingOperators.every((lo: any) => {
-                  // Se ambos são null, considerar mesmo segmento
-                  if (lo.user.segment === null && operator.segment === null) return true;
-                  // Comparar segmentos
-                  return lo.user.segment === operator.segment;
-                });
-                
-                if (!allSameSegment) {
-                  // Linha já tem operador de outro segmento, não pode atribuir
-                  lineIndex++;
-                  attempts++;
-                  continue;
-                }
-              }
+          if (existing) {
+            continue; // Operador já está vinculado a esta linha
+          }
 
-              // Linha disponível e válida!
-              assignedLine = candidateLine;
-              break; // Sair do loop
+          // Verificar se a linha já tem operadores de outro segmento
+          const existingOperators = await (this.prisma as any).lineOperator.findMany({
+            where: { lineId: candidateLine.id },
+            include: { user: true },
+          });
+
+          // Se a linha já tem operadores, verificar se são do mesmo segmento
+          if (existingOperators.length > 0) {
+            const allSameSegment = existingOperators.every((lo: any) => {
+              // Se ambos são null, considerar mesmo segmento
+              if (lo.user.segment === null && operator.segment === null) return true;
+              // Comparar segmentos
+              return lo.user.segment === operator.segment;
+            });
+            
+            if (!allSameSegment) {
+              // Linha já tem operador de outro segmento, pular esta linha
+              continue;
             }
           }
 
-          lineIndex++;
-          attempts++;
+          // Linha disponível! Atribuir e sair do loop
+          assignedLine = candidateLine;
+          break;
         }
 
         if (assignedLine) {
@@ -604,14 +588,17 @@ export class ControlPanelService {
             });
           }
 
-          // Se linha padrão (null) foi atribuída e operador tem segmento, atualizar segmento da linha
-          // Ou se a linha tinha segmento diferente (não deveria acontecer, mas por segurança)
-          if (assignedLine.segment !== operator.segment && operator.segment !== null) {
+          // SEMPRE atualizar segmento da linha para o segmento do operador
+          // Se operador tem segmento, atualizar linha para esse segmento
+          if (operator.segment !== null && assignedLine.segment !== operator.segment) {
             await this.prisma.linesStock.update({
               where: { id: assignedLine.id },
               data: { segment: operator.segment },
             });
-            console.log(`🔄 [Atribuição em Massa] Linha ${assignedLine.phone} atualizada de segmento ${assignedLine.segment} para ${operator.segment}`);
+            console.log(`🔄 [Atribuição em Massa] Linha ${assignedLine.phone} atualizada de segmento ${assignedLine.segment || 'null'} para ${operator.segment}`);
+          } else if (operator.segment === null && assignedLine.segment !== null) {
+            // Se operador não tem segmento mas linha tem, manter segmento da linha
+            console.log(`ℹ️ [Atribuição em Massa] Linha ${assignedLine.phone} mantém segmento ${assignedLine.segment} (operador sem segmento)`);
           }
 
           results.assigned++;
