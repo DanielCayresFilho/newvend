@@ -297,14 +297,17 @@ model ControlPanel {
   segmentId Int? // null = global (todos os segmentos)
 
   // Frases de bloqueio automático (JSON array de strings)
-  blockPhrases      String? @db.Text
-  blockTabulationId Int? // Tabulação padrão ao bloquear
+  blockPhrasesEnabled  Boolean @default(true) // Ativar/desativar frases de bloqueio
+  blockPhrases         String? @db.Text
+  blockTabulationId   Int? // Tabulação padrão ao bloquear
 
   // Temporizador de CPC (em horas)
-  cpcCooldownHours Int @default(24)
+  cpcCooldownEnabled Boolean @default(true) // Ativar/desativar temporizador de CPC
+  cpcCooldownHours   Int     @default(24)
 
   // Reenvio - Intervalo mínimo entre campanhas para o mesmo telefone (em horas)
-  resendCooldownHours Int @default(24)
+  resendCooldownEnabled Boolean @default(true) // Ativar/desativar controle de reenvio
+  resendCooldownHours   Int     @default(24)
 
   // Repescagem - Controle de mensagens seguidas do operador
   repescagemEnabled       Boolean @default(false)

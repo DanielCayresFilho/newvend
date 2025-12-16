@@ -12,6 +12,14 @@ export class UpdateControlPanelDto {
   segmentId?: number;
 
   // Frases de bloqueio automático (array de strings)
+  @Transform(({ value }) => {
+    if (value === null || value === undefined || value === '') return undefined;
+    return Boolean(value);
+  })
+  @IsBoolean()
+  @IsOptional()
+  blockPhrasesEnabled?: boolean;
+
   @IsOptional()
   blockPhrases?: string[]; // Será armazenado como JSON string no banco
 
@@ -26,6 +34,14 @@ export class UpdateControlPanelDto {
 
   // Temporizador de CPC (em horas)
   @Transform(({ value }) => {
+    if (value === null || value === undefined || value === '') return undefined;
+    return Boolean(value);
+  })
+  @IsBoolean()
+  @IsOptional()
+  cpcCooldownEnabled?: boolean;
+
+  @Transform(({ value }) => {
     if (value === null || value === undefined || value === '') return 24;
     const num = Number(value);
     return isNaN(num) ? 24 : num;
@@ -35,6 +51,14 @@ export class UpdateControlPanelDto {
   cpcCooldownHours?: number;
 
   // Reenvio - Intervalo mínimo entre campanhas para o mesmo telefone (em horas)
+  @Transform(({ value }) => {
+    if (value === null || value === undefined || value === '') return undefined;
+    return Boolean(value);
+  })
+  @IsBoolean()
+  @IsOptional()
+  resendCooldownEnabled?: boolean;
+
   @Transform(({ value }) => {
     if (value === null || value === undefined || value === '') return 24;
     const num = Number(value);

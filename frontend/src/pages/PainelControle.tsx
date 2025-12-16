@@ -90,7 +90,10 @@ export default function PainelControle() {
     try {
       await controlPanelService.update({
         segmentId: selectedSegmentId,
+        blockPhrasesEnabled: settings.blockPhrasesEnabled,
+        cpcCooldownEnabled: settings.cpcCooldownEnabled,
         cpcCooldownHours: settings.cpcCooldownHours,
+        resendCooldownEnabled: settings.resendCooldownEnabled,
         resendCooldownHours: settings.resendCooldownHours,
         repescagemEnabled: settings.repescagemEnabled,
         repescagemMaxMessages: settings.repescagemMaxMessages,
@@ -229,6 +232,20 @@ export default function PainelControle() {
 
             <Separator className="mb-4" />
 
+            {/* Ativar/Desativar */}
+            <div className="flex items-center justify-between rounded-lg border p-4 mb-4">
+              <div className="space-y-0.5">
+                <Label className="text-base font-medium">Ativar Frases de Bloqueio</Label>
+                <p className="text-sm text-muted-foreground">
+                  Bloquear contatos automaticamente quando enviarem frases configuradas
+                </p>
+              </div>
+              <Switch
+                checked={settings?.blockPhrasesEnabled ?? true}
+                onCheckedChange={(checked) => setSettings(s => s ? {...s, blockPhrasesEnabled: checked} : null)}
+              />
+            </div>
+
             {/* Lista de frases */}
             <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
               {settings?.blockPhrases && settings.blockPhrases.length > 0 ? (
@@ -306,8 +323,23 @@ export default function PainelControle() {
             <Separator className="mb-4" />
 
             <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="cpc-cooldown">Período de espera (horas)</Label>
+              {/* Ativar/Desativar */}
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                <div className="space-y-0.5">
+                  <Label className="text-base font-medium">Ativar Temporizador de CPC</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Controlar intervalo entre contatos com CPC
+                  </p>
+                </div>
+                <Switch
+                  checked={settings?.cpcCooldownEnabled ?? true}
+                  onCheckedChange={(checked) => setSettings(s => s ? {...s, cpcCooldownEnabled: checked} : null)}
+                />
+              </div>
+
+              {settings?.cpcCooldownEnabled && (
+                <div className="space-y-2">
+                  <Label htmlFor="cpc-cooldown">Período de espera (horas)</Label>
                 <div className="flex items-center gap-2">
                   <Input
                     id="cpc-cooldown"
@@ -320,17 +352,18 @@ export default function PainelControle() {
                   />
                   <span className="text-sm text-muted-foreground">horas</span>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Após marcar um contato como CPC, só poderá ser contatado novamente após este período
-                </p>
-              </div>
+                  <p className="text-xs text-muted-foreground">
+                    Após marcar um contato como CPC, só poderá ser contatado novamente após este período
+                  </p>
+                </div>
 
-              <div className="flex items-center gap-2 p-3 rounded-lg bg-warning/5 border border-warning/20">
-                <AlertTriangle className="h-4 w-4 text-warning" />
-                <span className="text-sm text-muted-foreground">
-                  Exemplo: Com 24h, se CPC às 10h, só libera às 10h do dia seguinte
-                </span>
-              </div>
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-warning/5 border border-warning/20">
+                  <AlertTriangle className="h-4 w-4 text-warning" />
+                  <span className="text-sm text-muted-foreground">
+                    Exemplo: Com 24h, se CPC às 10h, só libera às 10h do dia seguinte
+                  </span>
+                </div>
+              )}
             </div>
           </GlassCard>
 
@@ -351,8 +384,23 @@ export default function PainelControle() {
             <Separator className="mb-4" />
 
             <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="resend-cooldown">Período de espera (horas)</Label>
+              {/* Ativar/Desativar */}
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                <div className="space-y-0.5">
+                  <Label className="text-base font-medium">Ativar Controle de Reenvio</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Controlar intervalo mínimo entre campanhas
+                  </p>
+                </div>
+                <Switch
+                  checked={settings?.resendCooldownEnabled ?? true}
+                  onCheckedChange={(checked) => setSettings(s => s ? {...s, resendCooldownEnabled: checked} : null)}
+                />
+              </div>
+
+              {settings?.resendCooldownEnabled && (
+                <div className="space-y-2">
+                  <Label htmlFor="resend-cooldown">Período de espera (horas)</Label>
                 <div className="flex items-center gap-2">
                   <Input
                     id="resend-cooldown"
@@ -365,10 +413,11 @@ export default function PainelControle() {
                   />
                   <span className="text-sm text-muted-foreground">horas</span>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Evita enviar múltiplas campanhas para o mesmo contato em um curto período
-                </p>
-              </div>
+                  <p className="text-xs text-muted-foreground">
+                    Evita enviar múltiplas campanhas para o mesmo contato em um curto período
+                  </p>
+                </div>
+              )}
             </div>
           </GlassCard>
 

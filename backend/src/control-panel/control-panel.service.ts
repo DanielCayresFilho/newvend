@@ -17,9 +17,12 @@ export class ControlPanelService {
       return {
         id: null,
         segmentId: segmentId ?? null,
+        blockPhrasesEnabled: true,
         blockPhrases: [],
         blockTabulationId: null,
+        cpcCooldownEnabled: true,
         cpcCooldownHours: 24,
+        resendCooldownEnabled: true,
         resendCooldownHours: 24,
         repescagemEnabled: false,
         repescagemMaxMessages: 2,
@@ -42,9 +45,12 @@ export class ControlPanelService {
 
     const data = {
       segmentId: dto.segmentId ?? null,
+      blockPhrasesEnabled: dto.blockPhrasesEnabled,
       blockPhrases: dto.blockPhrases ? JSON.stringify(dto.blockPhrases) : undefined,
       blockTabulationId: dto.blockTabulationId,
+      cpcCooldownEnabled: dto.cpcCooldownEnabled,
       cpcCooldownHours: dto.cpcCooldownHours,
+      resendCooldownEnabled: dto.resendCooldownEnabled,
       resendCooldownHours: dto.resendCooldownHours,
       repescagemEnabled: dto.repescagemEnabled,
       repescagemMaxMessages: dto.repescagemMaxMessages,
@@ -111,8 +117,13 @@ export class ControlPanelService {
   // Verificar se uma mensagem contém uma frase de bloqueio
   async checkBlockPhrases(message: string, segmentId?: number): Promise<boolean> {
     const config = await this.findOne(segmentId);
+    
+    // Se frases de bloqueio estiverem desativadas, retornar false
+    if (!config.blockPhrasesEnabled) {
+      return false;
+    }
+    
     const phrases = config.blockPhrases || [];
-
     const messageLower = message.toLowerCase();
     return phrases.some((phrase: string) => messageLower.includes(phrase.toLowerCase()));
   }
@@ -120,6 +131,11 @@ export class ControlPanelService {
   // Verificar se pode enviar para um CPC (baseado no temporizador)
   async canContactCPC(contactPhone: string, segmentId?: number): Promise<{ allowed: boolean; reason?: string; hoursRemaining?: number }> {
     const config = await this.findOne(segmentId);
+
+    // Se temporizador de CPC estiver desativado, permitir sempre
+    if (!config.cpcCooldownEnabled) {
+      return { allowed: true };
+    }
 
     const contact = await this.prisma.contact.findFirst({
       where: { phone: contactPhone },
@@ -151,6 +167,11 @@ export class ControlPanelService {
   // Verificar se pode reenviar para um telefone
   async canResend(contactPhone: string, segmentId?: number): Promise<{ allowed: boolean; reason?: string; hoursRemaining?: number }> {
     const config = await this.findOne(segmentId);
+
+    // Se controle de reenvio estiver desativado, permitir sempre
+    if (!config.resendCooldownEnabled) {
+      return { allowed: true };
+    }
 
     const lastSend = await this.prisma.sendHistory.findFirst({
       where: { contactPhone },

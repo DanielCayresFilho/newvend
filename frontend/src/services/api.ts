@@ -964,9 +964,12 @@ export const apiLogsService = {
 export interface ControlPanelSettings {
   id: number | null;
   segmentId: number | null;
+  blockPhrasesEnabled: boolean;
   blockPhrases: string[];
   blockTabulationId: number | null;
+  cpcCooldownEnabled: boolean;
   cpcCooldownHours: number;
+  resendCooldownEnabled: boolean;
   resendCooldownHours: number;
   repescagemEnabled: boolean;
   repescagemMaxMessages: number;
