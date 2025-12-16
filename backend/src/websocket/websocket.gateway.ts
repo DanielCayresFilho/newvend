@@ -370,27 +370,43 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         };
         
         try {
-          // Extrair nome do arquivo da URL (remover /media/ se presente)
+          // Extrair nome do arquivo da URL
           let filePath: string;
+          let useBase64 = true; // Por padrão, usar base64
+          
           if (data.mediaUrl.startsWith('/media/')) {
+            // URL relativa do nosso servidor - pegar arquivo diretamente
             const filename = data.mediaUrl.replace('/media/', '');
             filePath = await this.mediaService.getFilePath(filename);
+            console.log(`📁 [WebSocket] Arquivo encontrado no servidor: ${filePath}`);
           } else if (data.mediaUrl.startsWith('http')) {
-            // Se for URL completa, baixar o arquivo primeiro
-            console.log(`📥 [WebSocket] Baixando arquivo de URL externa: ${data.mediaUrl}`);
-            const response = await axios.get(data.mediaUrl, { responseType: 'arraybuffer' });
-            const tempPath = path.join('./uploads', `temp-${Date.now()}-${cleanFileName}`);
-            await fs.mkdir('./uploads', { recursive: true });
-            await fs.writeFile(tempPath, response.data);
-            filePath = tempPath;
+            // URL completa - verificar se é do nosso servidor
+            const appUrl = process.env.APP_URL || 'https://api.newvend.taticamarketing.com.br';
+            if (data.mediaUrl.startsWith(appUrl)) {
+              // É do nosso servidor - extrair filename e pegar do storage
+              const urlPath = new URL(data.mediaUrl).pathname;
+              const filename = urlPath.replace('/media/', '');
+              filePath = await this.mediaService.getFilePath(filename);
+              console.log(`📁 [WebSocket] Arquivo do nosso servidor encontrado: ${filePath}`);
+            } else {
+              // URL externa - baixar temporariamente
+              console.log(`📥 [WebSocket] Baixando arquivo de URL externa: ${data.mediaUrl}`);
+              const response = await axios.get(data.mediaUrl, { responseType: 'arraybuffer' });
+              const tempPath = path.join('./uploads', `temp-${Date.now()}-${cleanFileName}`);
+              await fs.mkdir('./uploads', { recursive: true });
+              await fs.writeFile(tempPath, response.data);
+              filePath = tempPath;
+            }
           } else {
             // Assumir que é um caminho relativo
             filePath = path.join('./uploads', data.mediaUrl.replace(/^\/media\//, ''));
           }
 
           // Ler arquivo e converter para base64
+          console.log(`📖 [WebSocket] Lendo arquivo: ${filePath}`);
           const fileBuffer = await fs.readFile(filePath);
           const base64File = fileBuffer.toString('base64');
+          console.log(`✅ [WebSocket] Arquivo convertido para base64: ${base64File.length} caracteres`);
           
           // Determinar mimetype baseado na extensão
           const getMimeType = (filename: string): string => {
@@ -417,32 +433,123 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
           };
 
           const mimeType = getMimeType(cleanFileName);
-          const base64DataUrl = `data:${mimeType};base64,${base64File}`;
 
-          // Enviar via sendMedia com base64
-          const payload = {
+          // Construir URL completa do arquivo para tentar primeiro
+          const appUrl = process.env.APP_URL || 'https://api.newvend.taticamarketing.com.br';
+          let fullMediaUrl: string;
+          
+          if (data.mediaUrl.startsWith('/media/')) {
+            fullMediaUrl = `${appUrl}${data.mediaUrl}`;
+          } else if (data.mediaUrl.startsWith('http')) {
+            fullMediaUrl = data.mediaUrl;
+          } else {
+            fullMediaUrl = `${appUrl}/media/${data.mediaUrl.replace(/^\/media\//, '')}`;
+          }
+
+          // Estratégia: Tentar primeiro com URL, depois base64, depois campo "media"
+          // Tentativa 1: URL completa (se o arquivo estiver acessível publicamente)
+          let payload: any = {
             number: data.contactPhone.replace(/\D/g, ''),
             mediatype: 'document',
-            base64: base64DataUrl,
+            mediaUrl: fullMediaUrl,
             fileName: cleanFileName,
           };
           
-          console.log(`📤 [WebSocket] Enviando documento via sendMedia (base64):`, {
+          if (data.message && data.message.trim()) {
+            payload.caption = data.message;
+          }
+          
+          console.log(`📤 [WebSocket] Tentativa 1 - Enviando com URL:`, {
             number: payload.number,
             fileName: payload.fileName,
             mediatype: payload.mediatype,
-            base64Length: base64DataUrl.length,
+            mediaUrl: fullMediaUrl,
+            hasCaption: !!payload.caption,
           });
           
-          apiResponse = await axios.post(
-            `${evolution.evolutionUrl}/message/sendMedia/${instanceName}`,
-            payload,
-            {
-              headers: { 'apikey': evolution.evolutionKey },
+          try {
+            apiResponse = await axios.post(
+              `${evolution.evolutionUrl}/message/sendMedia/${instanceName}`,
+              payload,
+              {
+                headers: { 'apikey': evolution.evolutionKey },
+              }
+            );
+            
+            console.log(`✅ [WebSocket] Documento enviado com sucesso via sendMedia (URL)`);
+          } catch (urlError: any) {
+            // Tentativa 2: Base64 puro
+            console.warn(`⚠️ [WebSocket] Tentativa 1 (URL) falhou, tentando com base64:`, {
+              status: urlError.response?.status,
+              message: urlError.response?.data?.response?.message || urlError.message,
+            });
+            
+            payload = {
+              number: data.contactPhone.replace(/\D/g, ''),
+              mediatype: 'document',
+              base64: base64File, // Base64 puro, sem prefixo
+              fileName: cleanFileName,
+            };
+            
+            if (data.message && data.message.trim()) {
+              payload.caption = data.message;
             }
-          );
-          
-          console.log(`✅ [WebSocket] Documento enviado com sucesso via sendMedia (base64)`);
+            
+            console.log(`📤 [WebSocket] Tentativa 2 - Enviando com base64:`, {
+              number: payload.number,
+              fileName: payload.fileName,
+              mediatype: payload.mediatype,
+              base64Length: base64File.length,
+              hasCaption: !!payload.caption,
+            });
+            
+            try {
+              apiResponse = await axios.post(
+                `${evolution.evolutionUrl}/message/sendMedia/${instanceName}`,
+                payload,
+                {
+                  headers: { 'apikey': evolution.evolutionKey },
+                }
+              );
+              
+              console.log(`✅ [WebSocket] Documento enviado com sucesso via sendMedia (base64)`);
+            } catch (base64Error: any) {
+              // Tentativa 3: Campo "media"
+              console.warn(`⚠️ [WebSocket] Tentativa 2 (base64) falhou, tentando com campo "media":`, {
+                status: base64Error.response?.status,
+                message: base64Error.response?.data?.response?.message || base64Error.message,
+              });
+              
+              payload = {
+                number: data.contactPhone.replace(/\D/g, ''),
+                mediatype: 'document',
+                media: base64File, // Campo "media"
+                fileName: cleanFileName,
+              };
+              
+              if (data.message && data.message.trim()) {
+                payload.caption = data.message;
+              }
+              
+              console.log(`📤 [WebSocket] Tentativa 3 - Enviando com campo "media":`, {
+                number: payload.number,
+                fileName: payload.fileName,
+                mediatype: payload.mediatype,
+                mediaLength: base64File.length,
+                hasCaption: !!payload.caption,
+              });
+              
+              apiResponse = await axios.post(
+                `${evolution.evolutionUrl}/message/sendMedia/${instanceName}`,
+                payload,
+                {
+                  headers: { 'apikey': evolution.evolutionKey },
+                }
+              );
+              
+              console.log(`✅ [WebSocket] Documento enviado com sucesso via sendMedia (media)`);
+            }
+          }
           
           // Limpar arquivo temporário se foi criado
           if (filePath.includes('temp-')) {
