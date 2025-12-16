@@ -5,6 +5,7 @@ import { WebsocketGateway } from './websocket.gateway';
 import { PrismaService } from '../prisma.service';
 import { ConversationsModule } from '../conversations/conversations.module';
 import { ControlPanelModule } from '../control-panel/control-panel.module';
+import { MediaModule } from '../media/media.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { ControlPanelModule } from '../control-panel/control-panel.module';
     }),
     ConversationsModule,
     ControlPanelModule,
+    MediaModule,
   ],
   providers: [WebsocketGateway, PrismaService],
   exports: [WebsocketGateway],

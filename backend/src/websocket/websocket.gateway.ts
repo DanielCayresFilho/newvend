@@ -13,7 +13,10 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma.service';
 import { ConversationsService } from '../conversations/conversations.service';
 import { ControlPanelService } from '../control-panel/control-panel.service';
+import { MediaService } from '../media/media.service';
 import axios from 'axios';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 
 @WebSocketGateway({
   cors: {
@@ -42,6 +45,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
     private prisma: PrismaService,
     private conversationsService: ConversationsService,
     private controlPanelService: ControlPanelService,
+    private mediaService: MediaService,
   ) {}
 
   async handleConnection(client: Socket) {
@@ -366,14 +370,69 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         };
         
         try {
+          // Extrair nome do arquivo da URL (remover /media/ se presente)
+          let filePath: string;
+          if (data.mediaUrl.startsWith('/media/')) {
+            const filename = data.mediaUrl.replace('/media/', '');
+            filePath = await this.mediaService.getFilePath(filename);
+          } else if (data.mediaUrl.startsWith('http')) {
+            // Se for URL completa, baixar o arquivo primeiro
+            console.log(`📥 [WebSocket] Baixando arquivo de URL externa: ${data.mediaUrl}`);
+            const response = await axios.get(data.mediaUrl, { responseType: 'arraybuffer' });
+            const tempPath = path.join('./uploads', `temp-${Date.now()}-${cleanFileName}`);
+            await fs.mkdir('./uploads', { recursive: true });
+            await fs.writeFile(tempPath, response.data);
+            filePath = tempPath;
+          } else {
+            // Assumir que é um caminho relativo
+            filePath = path.join('./uploads', data.mediaUrl.replace(/^\/media\//, ''));
+          }
+
+          // Ler arquivo e converter para base64
+          const fileBuffer = await fs.readFile(filePath);
+          const base64File = fileBuffer.toString('base64');
+          
+          // Determinar mimetype baseado na extensão
+          const getMimeType = (filename: string): string => {
+            const ext = filename.split('.').pop()?.toLowerCase();
+            const mimeTypes: { [key: string]: string } = {
+              'pdf': 'application/pdf',
+              'doc': 'application/msword',
+              'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+              'xls': 'application/vnd.ms-excel',
+              'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+              'jpg': 'image/jpeg',
+              'jpeg': 'image/jpeg',
+              'png': 'image/png',
+              'gif': 'image/gif',
+              'webp': 'image/webp',
+              'mp4': 'video/mp4',
+              'mpeg': 'video/mpeg',
+              'mp3': 'audio/mpeg',
+              'ogg': 'audio/ogg',
+              'wav': 'audio/wav',
+              'm4a': 'audio/mp4',
+            };
+            return mimeTypes[ext || ''] || 'application/octet-stream';
+          };
+
+          const mimeType = getMimeType(cleanFileName);
+          const base64DataUrl = `data:${mimeType};base64,${base64File}`;
+
+          // Enviar via sendMedia com base64
           const payload = {
             number: data.contactPhone.replace(/\D/g, ''),
-            mediaUrl: data.mediaUrl,
+            mediatype: 'document',
+            base64: base64DataUrl,
             fileName: cleanFileName,
-            mediatype: getMediaType(cleanFileName), // Evolution API requer "mediatype"
           };
           
-          console.log(`📤 [WebSocket] Enviando documento via sendMedia:`, JSON.stringify(payload, null, 2));
+          console.log(`📤 [WebSocket] Enviando documento via sendMedia (base64):`, {
+            number: payload.number,
+            fileName: payload.fileName,
+            mediatype: payload.mediatype,
+            base64Length: base64DataUrl.length,
+          });
           
           apiResponse = await axios.post(
             `${evolution.evolutionUrl}/message/sendMedia/${instanceName}`,
@@ -383,44 +442,22 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
             }
           );
           
-          console.log(`✅ [WebSocket] Documento enviado com sucesso via sendMedia`);
+          console.log(`✅ [WebSocket] Documento enviado com sucesso via sendMedia (base64)`);
+          
+          // Limpar arquivo temporário se foi criado
+          if (filePath.includes('temp-')) {
+            await fs.unlink(filePath).catch(() => {}); // Ignorar erros de limpeza
+          }
         } catch (mediaError: any) {
           // Log detalhado do erro
-          console.error('❌ [WebSocket] sendMedia falhou:', {
+          console.error('❌ [WebSocket] Erro ao enviar documento:', {
             status: mediaError.response?.status,
             statusText: mediaError.response?.statusText,
             data: JSON.stringify(mediaError.response?.data, null, 2),
             message: mediaError.message,
+            stack: mediaError.stack,
           });
-          
-          // Se sendMedia falhar, tentar sendDocument (se disponível)
-          try {
-            const payload = {
-              number: data.contactPhone.replace(/\D/g, ''),
-              mediaUrl: data.mediaUrl,
-              fileName: cleanFileName,
-            };
-            
-            console.log(`📤 [WebSocket] Tentando enviar documento via sendDocument:`, JSON.stringify(payload, null, 2));
-            
-            apiResponse = await axios.post(
-              `${evolution.evolutionUrl}/message/sendDocument/${instanceName}`,
-              payload,
-              {
-                headers: { 'apikey': evolution.evolutionKey },
-              }
-            );
-            
-            console.log(`✅ [WebSocket] Documento enviado com sucesso via sendDocument`);
-          } catch (documentError: any) {
-            console.error('❌ [WebSocket] sendDocument também falhou:', {
-              status: documentError.response?.status,
-              statusText: documentError.response?.statusText,
-              data: JSON.stringify(documentError.response?.data, null, 2),
-              message: documentError.message,
-            });
-            throw documentError; // Re-throw para ser capturado pelo catch externo
-          }
+          throw mediaError;
         }
       } else {
         apiResponse = await axios.post(
