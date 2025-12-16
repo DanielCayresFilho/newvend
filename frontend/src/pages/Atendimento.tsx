@@ -517,6 +517,7 @@ export default function Atendimento() {
           message: message.trim() || (messageType === 'image' ? 'Imagem enviada' : messageType === 'video' ? 'Vídeo enviado' : messageType === 'audio' ? 'Áudio enviado' : 'Documento enviado'),
           messageType,
           mediaUrl,
+          fileName: data.originalName || data.fileName, // Incluir nome do arquivo para documentos
         });
       } else {
         // Fallback: salvar via REST API

@@ -195,7 +195,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
   @SubscribeMessage('send-message')
   async handleSendMessage(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { contactPhone: string; message: string; messageType?: string; mediaUrl?: string; isNewConversation?: boolean },
+    @MessageBody() data: { contactPhone: string; message: string; messageType?: string; mediaUrl?: string; fileName?: string; isNewConversation?: boolean },
   ) {
     console.log(`📤 [WebSocket] Recebido send-message:`, JSON.stringify(data, null, 2));
     
@@ -285,16 +285,56 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
           }
         );
       } else if (data.messageType === 'document' && data.mediaUrl) {
-        apiResponse = await axios.post(
-          `${evolution.evolutionUrl}/message/sendMedia/${instanceName}`,
-          {
-            number: data.contactPhone.replace(/\D/g, ''),
-            mediaUrl: data.mediaUrl,
-          },
-          {
-            headers: { 'apikey': evolution.evolutionKey },
-          }
-        );
+        // Para documentos, tentar primeiro com sendMedia, se falhar, tentar sendDocument
+        // Extrair nome do arquivo (usar fileName do data se disponível, senão da URL)
+        const fileName = data.fileName || data.mediaUrl.split('/').pop() || 'document.pdf';
+        // Remover timestamp e IDs do nome se vier da URL
+        const cleanFileName = fileName.includes('-') && fileName.match(/^\d+-/) 
+          ? fileName.replace(/^\d+-/, '').replace(/-\d+\./, '.')
+          : fileName;
+        
+        // Determinar mimetype baseado na extensão
+        const getMimeType = (filename: string): string => {
+          const ext = filename.split('.').pop()?.toLowerCase();
+          const mimeTypes: Record<string, string> = {
+            'pdf': 'application/pdf',
+            'doc': 'application/msword',
+            'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'xls': 'application/vnd.ms-excel',
+            'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          };
+          return mimeTypes[ext || ''] || 'application/pdf';
+        };
+        
+        try {
+          apiResponse = await axios.post(
+            `${evolution.evolutionUrl}/message/sendMedia/${instanceName}`,
+            {
+              number: data.contactPhone.replace(/\D/g, ''),
+              mediaUrl: data.mediaUrl,
+              fileName: cleanFileName,
+              mimetype: getMimeType(cleanFileName),
+            },
+            {
+              headers: { 'apikey': evolution.evolutionKey },
+            }
+          );
+        } catch (mediaError) {
+          // Se sendMedia falhar, tentar sendDocument (se disponível)
+          console.log('⚠️ [WebSocket] sendMedia falhou, tentando sendDocument...', mediaError.response?.data);
+          
+          apiResponse = await axios.post(
+            `${evolution.evolutionUrl}/message/sendDocument/${instanceName}`,
+            {
+              number: data.contactPhone.replace(/\D/g, ''),
+              mediaUrl: data.mediaUrl,
+              fileName: cleanFileName,
+            },
+            {
+              headers: { 'apikey': evolution.evolutionKey },
+            }
+          );
+        }
       } else {
         apiResponse = await axios.post(
           `${evolution.evolutionUrl}/message/sendText/${instanceName}`,
