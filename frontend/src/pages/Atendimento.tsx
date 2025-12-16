@@ -25,7 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useNotificationSound } from "@/hooks/useNotificationSound";
 import { toast } from "@/hooks/use-toast";
-import { conversationsService, tabulationsService, contactsService, Contact, Conversation as APIConversation, Tabulation } from "@/services/api";
+import { conversationsService, tabulationsService, contactsService, Contact, Conversation as APIConversation, Tabulation, getAuthToken } from "@/services/api";
 import { useRealtimeConnection, useRealtimeSubscription } from "@/hooks/useRealtimeConnection";
 import { WS_EVENTS, realtimeSocket } from "@/services/websocket";
 import { format } from "date-fns";
@@ -69,6 +69,8 @@ export default function Atendimento() {
   const [editContactIsCPC, setEditContactIsCPC] = useState(false);
   const [isSavingContact, setIsSavingContact] = useState(false);
   const previousConversationsRef = useRef<ConversationGroup[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
   
   // Estado para notificação de linha banida
   const [lineBannedNotification, setLineBannedNotification] = useState<{
@@ -469,6 +471,97 @@ export default function Atendimento() {
   useEffect(() => {
     scrollToBottom();
   }, [selectedConversation?.messages]);
+
+  // Função para determinar o tipo de mídia baseado no mimetype
+  const getMessageTypeFromMime = (mimeType: string): 'image' | 'video' | 'audio' | 'document' => {
+    if (mimeType.startsWith('image/')) return 'image';
+    if (mimeType.startsWith('video/')) return 'video';
+    if (mimeType.startsWith('audio/')) return 'audio';
+    return 'document';
+  };
+
+  // Função para fazer upload de arquivo
+  const handleFileUpload = useCallback(async (file: File) => {
+    if (!selectedConversation || isUploadingFile) return;
+
+    setIsUploadingFile(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const token = getAuthToken();
+      if (!token) {
+        throw new Error('Não autenticado');
+      }
+
+      const response = await fetch('https://api.newvend.taticamarketing.com.br/media/upload', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Erro ao fazer upload do arquivo');
+      }
+
+      const data = await response.json();
+      const messageType = getMessageTypeFromMime(data.mimeType);
+      const mediaUrl = data.mediaUrl.startsWith('http') ? data.mediaUrl : `https://api.newvend.taticamarketing.com.br${data.mediaUrl}`;
+
+      // Enviar mensagem com mídia via WebSocket
+      if (isRealtimeConnected) {
+        realtimeSocket.send('send-message', {
+          contactPhone: selectedConversation.contactPhone,
+          message: message.trim() || (messageType === 'image' ? 'Imagem enviada' : messageType === 'video' ? 'Vídeo enviado' : messageType === 'audio' ? 'Áudio enviado' : 'Documento enviado'),
+          messageType,
+          mediaUrl,
+        });
+      } else {
+        // Fallback: salvar via REST API
+        await conversationsService.create({
+          contactName: selectedConversation.contactName,
+          contactPhone: selectedConversation.contactPhone,
+          message: message.trim() || (messageType === 'image' ? 'Imagem enviada' : messageType === 'video' ? 'Vídeo enviado' : messageType === 'audio' ? 'Áudio enviado' : 'Documento enviado'),
+          sender: 'operator',
+          messageType,
+          mediaUrl,
+          userName: user?.name,
+          userLine: user?.lineId,
+          segment: user?.segmentId,
+        });
+      }
+
+      setMessage(""); // Limpar input
+      toast({
+        title: "Arquivo enviado",
+        description: "Arquivo enviado com sucesso",
+      });
+    } catch (error) {
+      console.error('Erro ao fazer upload:', error);
+      playErrorSound();
+      toast({
+        title: "Erro ao enviar arquivo",
+        description: error instanceof Error ? error.message : "Erro desconhecido",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingFile(false);
+      // Limpar input de arquivo
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  }, [selectedConversation, isUploadingFile, isRealtimeConnected, message, user, playErrorSound]);
+
+  // Handler para seleção de arquivo
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleFileUpload(file);
+    }
+  }, [handleFileUpload]);
 
   const handleSendMessage = useCallback(async () => {
     if (!message.trim() || !selectedConversation || isSending) return;
@@ -1034,8 +1127,27 @@ export default function Atendimento() {
               {/* Message Input */}
               <div className="p-4 border-t border-border/50">
                 <div className="flex gap-2">
-                  <Button variant="outline" size="icon">
-                    <FileText className="h-4 w-4" />
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileSelect}
+                    accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx"
+                    className="hidden"
+                    id="file-upload-input"
+                    disabled={isUploadingFile || !selectedConversation}
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploadingFile || !selectedConversation}
+                    title="Enviar arquivo"
+                  >
+                    {isUploadingFile ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <FileText className="h-4 w-4" />
+                    )}
                   </Button>
                   <Input
                     placeholder="Digite sua mensagem..."
