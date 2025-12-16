@@ -338,31 +338,33 @@ export default function PainelControle() {
               </div>
 
               {settings?.cpcCooldownEnabled && (
-                <div className="space-y-2">
-                  <Label htmlFor="cpc-cooldown">Período de espera (horas)</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="cpc-cooldown"
-                    type="number"
-                    min={1}
-                    max={720}
-                    value={settings?.cpcCooldownHours || 24}
-                    onChange={(e) => setSettings(s => s ? {...s, cpcCooldownHours: parseInt(e.target.value) || 24} : null)}
-                    className="w-24"
-                  />
-                  <span className="text-sm text-muted-foreground">horas</span>
-                </div>
-                  <p className="text-xs text-muted-foreground">
-                    Após marcar um contato como CPC, só poderá ser contatado novamente após este período
-                  </p>
-                </div>
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="cpc-cooldown">Período de espera (horas)</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="cpc-cooldown"
+                        type="number"
+                        min={1}
+                        max={720}
+                        value={settings?.cpcCooldownHours || 24}
+                        onChange={(e) => setSettings(s => s ? {...s, cpcCooldownHours: parseInt(e.target.value) || 24} : null)}
+                        className="w-24"
+                      />
+                      <span className="text-sm text-muted-foreground">horas</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Após marcar um contato como CPC, só poderá ser contatado novamente após este período
+                    </p>
+                  </div>
 
-                <div className="flex items-center gap-2 p-3 rounded-lg bg-warning/5 border border-warning/20">
-                  <AlertTriangle className="h-4 w-4 text-warning" />
-                  <span className="text-sm text-muted-foreground">
-                    Exemplo: Com 24h, se CPC às 10h, só libera às 10h do dia seguinte
-                  </span>
-                </div>
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-warning/5 border border-warning/20">
+                    <AlertTriangle className="h-4 w-4 text-warning" />
+                    <span className="text-sm text-muted-foreground">
+                      Exemplo: Com 24h, se CPC às 10h, só libera às 10h do dia seguinte
+                    </span>
+                  </div>
+                </>
               )}
             </div>
           </GlassCard>
