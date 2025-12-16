@@ -829,18 +829,12 @@ export class ControlPanelService {
 
       const totalLinesUpdated = updatedLines.count + updatedNullLines.count;
 
-      // 7. Reatribuir linhas automaticamente (usando a lógica de atribuição em massa)
-      // Isso vai respeitar as evolutions ativas configuradas no painel
-      console.log('🔄 [Desatribuição em Massa] Iniciando reatribuição automática de linhas...');
-      const reassignmentResult = await this.assignLinesToAllOperators();
-      console.log(`✅ [Desatribuição em Massa] Reatribuição concluída: ${reassignmentResult.assigned} operadores receberam linhas`);
-
       return {
         success: true,
         unassignedOperators: deletedCount.count,
         linesUpdated: totalLinesUpdated,
-        reassignedOperators: reassignmentResult.assigned,
-        message: `Desatribuição concluída: ${deletedCount.count} operadores desvinculados, ${totalLinesUpdated} linhas atualizadas para segmento "Padrão", ${reassignmentResult.assigned} operadores receberam novas linhas automaticamente`,
+        reassignedOperators: 0,
+        message: `Desatribuição concluída: ${deletedCount.count} operadores desvinculados, ${totalLinesUpdated} linhas atualizadas para segmento "Padrão"`,
       };
     } catch (error) {
       console.error('❌ [Desatribuição em Massa] Erro:', error);

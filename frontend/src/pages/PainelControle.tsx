@@ -244,7 +244,7 @@ export default function PainelControle() {
               <Button 
                 variant="destructive" 
                 onClick={async () => {
-                  if (!confirm('Tem certeza que deseja desatribuir todas as linhas? Esta ação irá:\n- Desvincular todos os operadores de suas linhas\n- Alterar todas as linhas para o segmento "Padrão"\n\nEsta ação não pode ser desfeita.')) {
+                  if (!confirm('Tem certeza que deseja desatribuir todas as linhas? Esta ação irá:\n- Desvincular TODOS os operadores de suas linhas\n- Alterar todas as linhas para o segmento "Padrão"\n- Limpar todos os vínculos\n\nEsta ação não pode ser desfeita. Use "Atribuir Linhas em Massa" depois para redistribuir.')) {
                     return;
                   }
                   setIsUnassigningLines(true);
@@ -252,8 +252,8 @@ export default function PainelControle() {
                     const result = await controlPanelService.unassignAllLines();
                     toast({
                       title: "Desatribuição concluída",
-                      description: `${result.message}\n${result.reassignedOperators} operadores receberam novas linhas automaticamente.`,
-                      duration: 10000,
+                      description: result.message,
+                      duration: 8000,
                     });
                   } catch (error) {
                     toast({
