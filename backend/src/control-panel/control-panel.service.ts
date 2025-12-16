@@ -520,22 +520,64 @@ export class ControlPanelService {
           currentLineId = lineOperator?.lineId || null;
         }
 
+        // Se operador tem linha, verificar se é de uma evolution ativa
         if (currentLineId) {
-          // Operador já tem linha
           const currentLine = await this.prisma.linesStock.findUnique({
             where: { id: currentLineId },
           });
-          results.skipped++;
-          results.details.push({
-            operatorName: operator.name,
-            operatorId: operator.id,
-            segment: operator.segment,
-            linePhone: currentLine?.phone || null,
-            lineId: currentLineId,
-            status: 'already_has_line',
-            reason: 'Operador já possui linha atribuída',
-          });
-          continue;
+          
+          if (currentLine) {
+            // Verificar se a linha atual é de uma evolution ativa
+            const activeEvolutions = await this.getActiveEvolutions(operator.segment || undefined);
+            
+            // Se há evolutions ativas configuradas e a linha atual não está na lista, desvincular
+            if (activeEvolutions && activeEvolutions.length > 0) {
+              if (!activeEvolutions.includes(currentLine.evolutionName)) {
+                // Linha atual não é de uma evolution ativa, desvincular
+                console.log(`🔄 [Atribuição em Massa] Desvinculando operador ${operator.name} da linha ${currentLine.phone} (evolution: ${currentLine.evolutionName} não está ativa)`);
+                
+                // Remover vínculo
+                await (this.prisma as any).lineOperator.deleteMany({
+                  where: { userId: operator.id, lineId: currentLineId },
+                });
+                
+                // Limpar campo legacy
+                await this.prisma.user.update({
+                  where: { id: operator.id },
+                  data: { line: null },
+                });
+                
+                // Continuar para atribuir nova linha
+                currentLineId = null;
+              } else {
+                // Linha atual é de uma evolution ativa, manter
+                results.skipped++;
+                results.details.push({
+                  operatorName: operator.name,
+                  operatorId: operator.id,
+                  segment: operator.segment,
+                  linePhone: currentLine.phone,
+                  lineId: currentLineId,
+                  status: 'already_has_line',
+                  reason: 'Operador já possui linha atribuída de evolution ativa',
+                });
+                continue;
+              }
+            } else {
+              // Sem restrição de evolutions, manter linha atual
+              results.skipped++;
+              results.details.push({
+                operatorName: operator.name,
+                operatorId: operator.id,
+                segment: operator.segment,
+                linePhone: currentLine.phone,
+                lineId: currentLineId,
+                status: 'already_has_line',
+                reason: 'Operador já possui linha atribuída',
+              });
+              continue;
+            }
+          }
         }
 
         // LÓGICA SIMPLIFICADA: 
@@ -704,8 +746,20 @@ export class ControlPanelService {
       }
 
       // 2. Desatribuir TODOS os operadores de TODAS as linhas (sem exceção)
+      // Primeiro, contar quantos vínculos existem
+      const totalLinksBefore = await (this.prisma as any).lineOperator.count({});
+      console.log(`🔍 [Desatribuição em Massa] Total de vínculos antes: ${totalLinksBefore}`);
+      
       const deletedCount = await (this.prisma as any).lineOperator.deleteMany({});
       console.log(`✅ [Desatribuição em Massa] ${deletedCount.count} vínculos de operadores removidos`);
+      
+      // Verificar se realmente removeu tudo
+      const totalLinksAfter = await (this.prisma as any).lineOperator.count({});
+      if (totalLinksAfter > 0) {
+        console.warn(`⚠️ [Desatribuição em Massa] Ainda existem ${totalLinksAfter} vínculos após deleteMany! Forçando remoção...`);
+        // Forçar remoção novamente
+        await (this.prisma as any).lineOperator.deleteMany({});
+      }
 
       // 3. Limpar campo legacy 'line' de TODOS os operadores (sem exceção)
       const updatedUsers = await this.prisma.user.updateMany({
@@ -717,6 +771,26 @@ export class ControlPanelService {
         },
       });
       console.log(`✅ [Desatribuição em Massa] Campo legacy "line" limpo de ${updatedUsers.count} operadores`);
+      
+      // Verificar se realmente limpou tudo
+      const operatorsWithLine = await this.prisma.user.count({
+        where: {
+          role: 'operator',
+          line: { not: null },
+        },
+      });
+      if (operatorsWithLine > 0) {
+        console.warn(`⚠️ [Desatribuição em Massa] Ainda existem ${operatorsWithLine} operadores com campo 'line' preenchido! Forçando limpeza...`);
+        await this.prisma.user.updateMany({
+          where: {
+            role: 'operator',
+            line: { not: null },
+          },
+          data: {
+            line: null,
+          },
+        });
+      }
 
       // 4. Limpar campo legacy 'linkedTo' de TODAS as linhas
       await this.prisma.linesStock.updateMany({
