@@ -297,8 +297,8 @@ model ControlPanel {
   segmentId Int? // null = global (todos os segmentos)
 
   // Frases de bloqueio automático (JSON array de strings)
-  blockPhrasesEnabled  Boolean @default(true) // Ativar/desativar frases de bloqueio
-  blockPhrases         String? @db.Text
+  blockPhrasesEnabled Boolean @default(true) // Ativar/desativar frases de bloqueio
+  blockPhrases        String? @db.Text
   blockTabulationId   Int? // Tabulação padrão ao bloquear
 
   // Temporizador de CPC (em horas)
