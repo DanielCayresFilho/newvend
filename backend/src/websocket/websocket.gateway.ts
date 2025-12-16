@@ -339,6 +339,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
           },
           {
             headers: { 'apikey': evolution.evolutionKey },
+            timeout: 30000, // 30 segundos
           }
         );
       } else if (data.messageType === 'document' && data.mediaUrl) {
@@ -391,7 +392,10 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
             } else {
               // URL externa - baixar temporariamente
               console.log(`📥 [WebSocket] Baixando arquivo de URL externa: ${data.mediaUrl}`);
-              const response = await axios.get(data.mediaUrl, { responseType: 'arraybuffer' });
+              const response = await axios.get(data.mediaUrl, { 
+                responseType: 'arraybuffer',
+                timeout: 30000, // 30 segundos
+              });
               const tempPath = path.join('./uploads', `temp-${Date.now()}-${cleanFileName}`);
               await fs.mkdir('./uploads', { recursive: true });
               await fs.writeFile(tempPath, response.data);
@@ -473,6 +477,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
               payload,
               {
                 headers: { 'apikey': evolution.evolutionKey },
+                timeout: 30000, // 30 segundos
               }
             );
             
@@ -509,6 +514,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
                 payload,
                 {
                   headers: { 'apikey': evolution.evolutionKey },
+                  timeout: 30000, // 30 segundos
                 }
               );
               
@@ -544,6 +550,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
                 payload,
                 {
                   headers: { 'apikey': evolution.evolutionKey },
+                  timeout: 30000, // 30 segundos
                 }
               );
               
@@ -575,6 +582,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
           },
           {
             headers: { 'apikey': evolution.evolutionKey },
+            timeout: 30000, // 30 segundos
           }
         );
       }
@@ -621,8 +629,25 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         statusText: error.response?.statusText,
         data: JSON.stringify(error.response?.data, null, 2),
         message: error.message,
+        code: error.code,
         stack: error.stack,
       });
+      
+      // Detectar timeout específico
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        const timeoutMessage = 'A requisição demorou muito para responder. Tente novamente.';
+        console.error('⏱️ [WebSocket] Timeout na requisição para Evolution API');
+        client.emit('message-error', { error: timeoutMessage });
+        return { error: timeoutMessage };
+      }
+      
+      // Detectar erro 504 Gateway Timeout
+      if (error.response?.status === 504) {
+        const timeoutMessage = 'O servidor demorou muito para processar a mensagem. Tente novamente.';
+        console.error('⏱️ [WebSocket] Gateway Timeout (504) - servidor demorou muito para responder');
+        client.emit('message-error', { error: timeoutMessage });
+        return { error: timeoutMessage };
+      }
       
       // Extrair mensagem de erro mais detalhada
       let errorMessage = `Erro ao enviar mensagem: ${error.message}`;
