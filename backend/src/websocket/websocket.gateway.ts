@@ -1063,58 +1063,222 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         EventSeverity.ERROR,
       );
 
-      // Detectar timeout específico - realocar linha automaticamente
-      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-        console.error('⏱️ [WebSocket] Timeout na requisição para Evolution API - Realocando linha...');
-        
-        // Realocar linha para o operador
-        const realocationResult = await this.reallocateLineForOperator(user.id, user.segment);
-        
-        if (realocationResult.success) {
-          const timeoutMessage = `A requisição demorou muito. Nova linha ${realocationResult.newLinePhone} foi atribuída automaticamente. Tente novamente.`;
-          console.log(`✅ [WebSocket] Linha realocada: ${realocationResult.oldLinePhone} → ${realocationResult.newLinePhone}`);
-          
-          // Atualizar user object
-          user.line = realocationResult.newLineId;
-          
-          // Notificar o operador sobre a nova linha
-          client.emit('line-reallocated', {
-            oldLinePhone: realocationResult.oldLinePhone,
-            newLinePhone: realocationResult.newLinePhone,
-            newLineId: realocationResult.newLineId,
-            message: timeoutMessage,
-          });
-          
-          client.emit('message-error', { error: timeoutMessage });
-          return { error: timeoutMessage };
-        } else {
-          const timeoutMessage = 'A requisição demorou muito para responder. Não foi possível realocar linha. Tente novamente mais tarde.';
-          console.error('❌ [WebSocket] Falha ao realocar linha:', realocationResult.reason);
-          client.emit('message-error', { error: timeoutMessage });
-          return { error: timeoutMessage };
-        }
-      }
+      // Tentar recuperar automaticamente: realocar linha e tentar novamente
+      console.log('🔄 [WebSocket] Tentando recuperar automaticamente...');
+      const recoveryResult = await this.recoverAndRetryMessage(client, user, data, error);
       
-      // Detectar erro 504 Gateway Timeout
-      if (error.response?.status === 504) {
-        const timeoutMessage = 'O servidor demorou muito para processar a mensagem. Tente novamente.';
-        console.error('⏱️ [WebSocket] Gateway Timeout (504) - servidor demorou muito para responder');
-        client.emit('message-error', { error: timeoutMessage });
-        return { error: timeoutMessage };
+      if (recoveryResult.success) {
+        // Sucesso após recuperação - não mostrar erro para o operador
+        return { success: true, conversation: recoveryResult.conversation };
+      } else {
+        // Falhou após todas as tentativas - mostrar mensagem amigável
+        const friendlyMessage = 'Não foi possível enviar a mensagem no momento. Por favor, tente novamente em alguns instantes.';
+        client.emit('message-error', { error: friendlyMessage });
+        return { error: friendlyMessage };
       }
-      
-      // Extrair mensagem de erro mais detalhada
-      let errorMessage = `Erro ao enviar mensagem: ${error.message}`;
-      if (error.response?.data?.message) {
-        const errorData = Array.isArray(error.response.data.message) 
-          ? error.response.data.message.join(', ')
-          : error.response.data.message;
-        errorMessage = `Erro ao enviar mensagem: ${errorData}`;
-      }
-      
-      client.emit('message-error', { error: errorMessage });
-      return { error: errorMessage };
     }
+  }
+
+  /**
+   * Tenta recuperar de erros e reenviar a mensagem automaticamente
+   * Retorna sucesso se conseguiu enviar, ou falha após todas as tentativas
+   */
+  private async recoverAndRetryMessage(
+    client: Socket,
+    user: any,
+    data: { contactPhone: string; message: string; messageType?: string; mediaUrl?: string; fileName?: string; isNewConversation?: boolean },
+    originalError: any,
+  ): Promise<{ success: boolean; conversation?: any; reason?: string }> {
+    const maxRetries = 3;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      console.log(`🔄 [WebSocket] Tentativa de recuperação ${attempt}/${maxRetries}...`);
+      
+      // 1. Realocar linha
+      const reallocationResult = await this.reallocateLineForOperator(user.id, user.segment);
+      
+      if (!reallocationResult.success) {
+        console.warn(`⚠️ [WebSocket] Falha ao realocar linha na tentativa ${attempt}:`, reallocationResult.reason);
+        if (attempt < maxRetries) {
+          // Aguardar um pouco antes de tentar novamente
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+          continue;
+        }
+        return { success: false, reason: 'Não foi possível realocar linha após múltiplas tentativas' };
+      }
+      
+      // 2. Atualizar user object com nova linha
+      user.line = reallocationResult.newLineId;
+      console.log(`✅ [WebSocket] Linha realocada: ${reallocationResult.oldLinePhone || 'sem linha'} → ${reallocationResult.newLinePhone}`);
+      
+      // 3. Buscar dados da nova linha
+      const newLine = await this.prisma.linesStock.findUnique({
+        where: { id: reallocationResult.newLineId },
+      });
+      
+      if (!newLine || newLine.lineStatus !== 'active') {
+        console.warn(`⚠️ [WebSocket] Nova linha ${reallocationResult.newLineId} não está ativa`);
+        if (attempt < maxRetries) continue;
+        return { success: false, reason: 'Nova linha não está ativa' };
+      }
+      
+      // 4. Buscar Evolution da nova linha
+      const evolution = await this.prisma.evolution.findUnique({
+        where: { evolutionName: newLine.evolutionName },
+      });
+      
+      if (!evolution) {
+        console.warn(`⚠️ [WebSocket] Evolution não encontrada para linha ${newLine.evolutionName}`);
+        if (attempt < maxRetries) continue;
+        return { success: false, reason: 'Evolution não encontrada' };
+      }
+      
+      // 5. Verificar health da nova linha
+      try {
+        const instanceName = `line_${newLine.phone.replace(/\D/g, '')}`;
+        const healthCheck = await axios.get(
+          `${evolution.evolutionUrl}/instance/connectionState/${instanceName}`,
+          { headers: { 'apikey': evolution.evolutionKey }, timeout: 5000 }
+        );
+        const connectionState = healthCheck.data?.state || healthCheck.data?.status;
+        if (connectionState !== 'open' && connectionState !== 'OPEN' && connectionState !== 'connected' && connectionState !== 'CONNECTED') {
+          console.warn(`⚠️ [WebSocket] Nova linha ${newLine.phone} não está conectada (status: ${connectionState})`);
+          if (attempt < maxRetries) continue;
+          return { success: false, reason: 'Nova linha não está conectada' };
+        }
+      } catch (healthError) {
+        console.warn(`⚠️ [WebSocket] Erro ao verificar health da nova linha:`, healthError);
+        // Continuar mesmo assim
+      }
+      
+      // 6. Tentar enviar mensagem novamente com a nova linha
+      try {
+        const instanceName = `line_${newLine.phone.replace(/\D/g, '')}`;
+        let apiResponse;
+        
+        if (data.messageType === 'image' && data.mediaUrl) {
+          apiResponse = await axios.post(
+            `${evolution.evolutionUrl}/message/sendMedia/${instanceName}`,
+            {
+              number: data.contactPhone.replace(/\D/g, ''),
+              mediaUrl: data.mediaUrl,
+              caption: data.message,
+              mediatype: 'image',
+            },
+            {
+              headers: { 'apikey': evolution.evolutionKey },
+              timeout: 30000,
+            }
+          );
+        } else if (data.messageType === 'document' && data.mediaUrl) {
+          // Para documentos, usar sendMedia com base64
+          const fileName = data.fileName || data.mediaUrl.split('/').pop() || 'document.pdf';
+          let filePath: string;
+          
+          if (data.mediaUrl.startsWith('/media/')) {
+            const filename = data.mediaUrl.replace('/media/', '');
+            filePath = await this.mediaService.getFilePath(filename);
+          } else if (data.mediaUrl.startsWith('http')) {
+            const appUrl = process.env.APP_URL || 'https://api.newvend.taticamarketing.com.br';
+            if (data.mediaUrl.startsWith(appUrl)) {
+              const urlPath = new URL(data.mediaUrl).pathname;
+              const filename = urlPath.replace('/media/', '');
+              filePath = await this.mediaService.getFilePath(filename);
+            } else {
+              const response = await axios.get(data.mediaUrl, { 
+                responseType: 'arraybuffer',
+                timeout: 30000,
+              });
+              const tempPath = path.join('./uploads', `temp-${Date.now()}-${fileName}`);
+              await fs.mkdir('./uploads', { recursive: true });
+              await fs.writeFile(tempPath, response.data);
+              filePath = tempPath;
+            }
+          } else {
+            filePath = path.join('./uploads', data.mediaUrl.replace(/^\/media\//, ''));
+          }
+          
+          const fileBuffer = await fs.readFile(filePath);
+          const base64File = fileBuffer.toString('base64');
+          
+          apiResponse = await axios.post(
+            `${evolution.evolutionUrl}/message/sendMedia/${instanceName}`,
+            {
+              number: data.contactPhone.replace(/\D/g, ''),
+              mediatype: 'document',
+              media: `data:application/pdf;base64,${base64File}`,
+              fileName: fileName,
+              caption: data.message,
+            },
+            {
+              headers: { 'apikey': evolution.evolutionKey },
+              timeout: 30000,
+            }
+          );
+        } else {
+          apiResponse = await axios.post(
+            `${evolution.evolutionUrl}/message/sendText/${instanceName}`,
+            {
+              number: data.contactPhone.replace(/\D/g, ''),
+              text: data.message,
+            },
+            {
+              headers: { 'apikey': evolution.evolutionKey },
+              timeout: 30000,
+            }
+          );
+        }
+        
+        // 7. Se chegou aqui, mensagem foi enviada com sucesso!
+        console.log(`✅ [WebSocket] Mensagem enviada com sucesso após recuperação (tentativa ${attempt})`);
+        
+        // Buscar contato
+        const contact = await this.prisma.contact.findFirst({
+          where: { phone: data.contactPhone },
+        });
+        
+        // Salvar conversa
+        const conversation = await this.conversationsService.create({
+          contactName: contact?.name || 'Desconhecido',
+          contactPhone: data.contactPhone,
+          segment: user.segment,
+          userName: user.name,
+          userLine: newLine.id,
+          userId: user.id,
+          message: data.message,
+          sender: 'operator',
+          messageType: data.messageType || 'text',
+          mediaUrl: data.mediaUrl,
+        });
+        
+        // Registrar mensagem do operador
+        await this.controlPanelService.registerOperatorMessage(
+          data.contactPhone,
+          user.id,
+          user.segment
+        );
+        
+        // Emitir mensagem para o usuário
+        client.emit('message-sent', { message: conversation });
+        this.emitToSupervisors(user.segment, 'new_message', { message: conversation });
+        
+        return { success: true, conversation };
+        
+      } catch (retryError: any) {
+        console.error(`❌ [WebSocket] Erro na tentativa ${attempt} de recuperação:`, retryError.message);
+        
+        // Se não for a última tentativa, continuar
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+          continue;
+        }
+        
+        // Última tentativa falhou
+        return { success: false, reason: `Falha após ${maxRetries} tentativas: ${retryError.message}` };
+      }
+    }
+    
+    return { success: false, reason: 'Todas as tentativas de recuperação falharam' };
   }
 
   @SubscribeMessage('typing')
