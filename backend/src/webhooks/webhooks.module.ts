@@ -9,6 +9,7 @@ import { MediaModule } from '../media/media.module';
 import { ControlPanelModule } from '../control-panel/control-panel.module';
 import { BlocklistModule } from '../blocklist/blocklist.module';
 import { TabulationsModule } from '../tabulations/tabulations.module';
+import { SystemEventsModule } from '../system-events/system-events.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { TabulationsModule } from '../tabulations/tabulations.module';
     ControlPanelModule,
     BlocklistModule,
     TabulationsModule,
+    SystemEventsModule,
   ],
   controllers: [WebhooksController],
   providers: [WebhooksService, PrismaService],

@@ -661,6 +661,77 @@ export interface Evolution {
   updatedAt: string;
 }
 
+// ==================== SYSTEM EVENTS ====================
+export interface SystemEvent {
+  id: number;
+  type: string;
+  module: string;
+  data: any;
+  userId: number | null;
+  severity: 'info' | 'warning' | 'error' | 'success';
+  createdAt: string;
+  user?: {
+    id: number;
+    name: string;
+    email: string;
+    role: string;
+  };
+}
+
+export interface SystemEventsResponse {
+  events: SystemEvent[];
+  total: number;
+}
+
+export const systemEventsService = {
+  async getEvents(filters?: {
+    type?: string;
+    module?: string;
+    userId?: number;
+    severity?: string;
+    startDate?: string;
+    endDate?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<SystemEventsResponse> {
+    const params = new URLSearchParams();
+    if (filters?.type) params.append('type', filters.type);
+    if (filters?.module) params.append('module', filters.module);
+    if (filters?.userId) params.append('userId', filters.userId.toString());
+    if (filters?.severity) params.append('severity', filters.severity);
+    if (filters?.startDate) params.append('startDate', filters.startDate);
+    if (filters?.endDate) params.append('endDate', filters.endDate);
+    if (filters?.limit) params.append('limit', filters.limit.toString());
+    if (filters?.offset) params.append('offset', filters.offset.toString());
+
+    return apiRequest<SystemEventsResponse>(`/system-events?${params.toString()}`);
+  },
+
+  async getMetrics(filters?: {
+    startDate?: string;
+    endDate?: string;
+    groupBy?: 'type' | 'module' | 'severity' | 'hour' | 'day';
+  }): Promise<Record<string, number>> {
+    const params = new URLSearchParams();
+    if (filters?.startDate) params.append('startDate', filters.startDate);
+    if (filters?.endDate) params.append('endDate', filters.endDate);
+    if (filters?.groupBy) params.append('groupBy', filters.groupBy);
+
+    return apiRequest<Record<string, number>>(`/system-events/metrics?${params.toString()}`);
+  },
+
+  async getEventsPerMinute(filters?: {
+    startDate?: string;
+    endDate?: string;
+  }): Promise<{ time: string; count: number }[]> {
+    const params = new URLSearchParams();
+    if (filters?.startDate) params.append('startDate', filters.startDate);
+    if (filters?.endDate) params.append('endDate', filters.endDate);
+
+    return apiRequest<{ time: string; count: number }[]>(`/system-events/events-per-minute?${params.toString()}`);
+  },
+};
+
 export const evolutionService = {
   list: async (): Promise<Evolution[]> => {
     return apiRequest<Evolution[]>('/evolution');

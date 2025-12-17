@@ -4,6 +4,7 @@ import { CreateLineDto } from './dto/create-line.dto';
 import { UpdateLineDto } from './dto/update-line.dto';
 import { WebsocketGateway } from '../websocket/websocket.gateway';
 import { ControlPanelService } from '../control-panel/control-panel.service';
+import { SystemEventsService, EventType, EventModule, EventSeverity } from '../system-events/system-events.service';
 import axios from 'axios';
 
 @Injectable()
@@ -13,6 +14,7 @@ export class LinesService {
     @Inject(forwardRef(() => WebsocketGateway))
     private websocketGateway: WebsocketGateway,
     private controlPanelService: ControlPanelService,
+    private systemEventsService: SystemEventsService,
   ) {}
 
   async create(createLineDto: CreateLineDto, createdBy?: number) {
@@ -495,6 +497,19 @@ export class LinesService {
 
     // Marcar linha como banida
     await this.update(lineId, { lineStatus: 'ban' });
+
+    // Registrar evento de linha banida
+    await this.systemEventsService.logEvent(
+      EventType.LINE_BANNED,
+      EventModule.LINES,
+      {
+        lineId: line.id,
+        linePhone: line.phone,
+        operatorsCount: lineOperators.length,
+      },
+      null,
+      EventSeverity.ERROR,
+    );
 
     // Buscar todos os operadores vinculados à linha (tabela LineOperator)
     const lineOperators = await this.prisma.lineOperator.findMany({

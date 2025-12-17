@@ -29,6 +29,10 @@ export class ControlPanelService {
         repescagemCooldownHours: 24,
         repescagemMaxAttempts: 2,
         activeEvolutions: null, // null = todas as evolutions ativas
+        autoMessageEnabled: false, // Desativado por padrão
+        autoMessageHours: 24,
+        autoMessageText: null,
+        autoMessageMaxAttempts: 1,
       };
     }
 
@@ -63,6 +67,10 @@ export class ControlPanelService {
             ? null 
             : JSON.stringify(dto.activeEvolutions))
         : undefined,
+      autoMessageEnabled: dto.autoMessageEnabled,
+      autoMessageHours: dto.autoMessageHours,
+      autoMessageText: dto.autoMessageText,
+      autoMessageMaxAttempts: dto.autoMessageMaxAttempts,
     };
 
     // Remover campos undefined

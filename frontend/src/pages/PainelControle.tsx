@@ -207,78 +207,7 @@ export default function PainelControle() {
               </SelectContent>
             </Select>
             <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                onClick={async () => {
-                  setIsAssigningLines(true);
-                  try {
-                    const result = await controlPanelService.assignLinesMass();
-                    toast({
-                      title: "Atribuição concluída",
-                      description: `${result.assigned} operador(es) receberam linha(s). ${result.skipped} operador(es) foram pulados.`,
-                    });
-                  } catch (error) {
-                    toast({
-                      title: "Erro",
-                      description: error instanceof Error ? error.message : "Erro ao atribuir linhas",
-                      variant: "destructive",
-                    });
-                  } finally {
-                    setIsAssigningLines(false);
-                  }
-                }}
-                disabled={isAssigningLines || isUnassigningLines}
-              >
-                {isAssigningLines ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Atribuindo...
-                  </>
-                ) : (
-                  <>
-                    <Users className="mr-2 h-4 w-4" />
-                    Atribuir Linhas em Massa
-                  </>
-                )}
-              </Button>
-              <Button 
-                variant="destructive" 
-                onClick={async () => {
-                  if (!confirm('Tem certeza que deseja desatribuir todas as linhas? Esta ação irá:\n- Desvincular TODOS os operadores de suas linhas\n- Alterar todas as linhas para o segmento "Padrão"\n- Limpar todos os vínculos\n\nEsta ação não pode ser desfeita. Use "Atribuir Linhas em Massa" depois para redistribuir.')) {
-                    return;
-                  }
-                  setIsUnassigningLines(true);
-                  try {
-                    const result = await controlPanelService.unassignAllLines();
-                    toast({
-                      title: "Desatribuição concluída",
-                      description: result.message,
-                      duration: 8000,
-                    });
-                  } catch (error) {
-                    toast({
-                      title: "Erro",
-                      description: error instanceof Error ? error.message : "Erro ao desatribuir linhas",
-                      variant: "destructive",
-                    });
-                  } finally {
-                    setIsUnassigningLines(false);
-                  }
-                }}
-                disabled={isAssigningLines || isUnassigningLines}
-              >
-                {isUnassigningLines ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Desatribuindo...
-                  </>
-                ) : (
-                  <>
-                    <Users className="mr-2 h-4 w-4" />
-                    Desatribuir Todas as Linhas
-                  </>
-                )}
-              </Button>
+              {/* Botões de atribuição/desatribuição ocultos - funcionalidades mantidas no backend */}
               <Button onClick={handleSave} disabled={isSaving}>
                 {isSaving ? (
                   <>
@@ -591,78 +520,7 @@ export default function PainelControle() {
             </div>
           </GlassCard>
 
-          {/* Evolutions Ativas */}
-          <GlassCard className="col-span-1">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <MessageSquare className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold">Evolutions Ativas</h2>
-                <p className="text-sm text-muted-foreground">
-                  Selecione quais evolutions podem ser usadas para atribuição de linhas
-                </p>
-              </div>
-            </div>
-
-            <Separator className="mb-4" />
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Evolutions permitidas para atribuição</Label>
-                <p className="text-xs text-muted-foreground">
-                  Se nenhuma for selecionada, todas as evolutions estarão ativas
-                </p>
-                <div className="space-y-2 max-h-64 overflow-y-auto border rounded-lg p-3">
-                  {evolutions.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-4">
-                      Nenhuma evolution cadastrada
-                    </p>
-                  ) : (
-                    evolutions.map((evolution) => {
-                      const isSelected = settings?.activeEvolutions?.includes(evolution.evolutionName) ?? false;
-                      return (
-                        <div
-                          key={evolution.id}
-                          className="flex items-center space-x-2 p-2 rounded-lg hover:bg-muted/50 cursor-pointer"
-                          onClick={() => {
-                            const current = settings?.activeEvolutions || [];
-                            const newList = isSelected
-                              ? current.filter(e => e !== evolution.evolutionName)
-                              : [...current, evolution.evolutionName];
-                            setSettings(s => s ? {
-                              ...s,
-                              activeEvolutions: newList.length === 0 ? null : newList
-                            } : null);
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => {}}
-                            className="h-4 w-4"
-                          />
-                          <Label className="cursor-pointer flex-1">
-                            {evolution.evolutionName}
-                          </Label>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-                {settings?.activeEvolutions && settings.activeEvolutions.length > 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    {settings.activeEvolutions.length} evolution(s) selecionada(s)
-                  </p>
-                )}
-                {(!settings?.activeEvolutions || settings.activeEvolutions.length === 0) && (
-                  <p className="text-xs text-muted-foreground">
-                    Todas as evolutions estão ativas
-                  </p>
-                )}
-              </div>
-            </div>
-          </GlassCard>
+          {/* Evolutions Ativas - Oculto (funcionalidade mantida no backend) */}
         </div>
       </div>
     </MainLayout>

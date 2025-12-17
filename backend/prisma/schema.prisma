@@ -57,6 +57,8 @@ model User {
   @@index([segment])
   @@index([line])
   @@index([role, status])
+
+  systemEvents SystemEvent[]
 }
 
 model Segment {
@@ -318,6 +320,12 @@ model ControlPanel {
   // Evolutions ativas - Controla quais evolutions podem ser usadas para atribuição de linhas
   activeEvolutions String? @db.Text // JSON array de nomes de evolution (null = todas ativas)
 
+  // Mensagem automática quando cliente não responde
+  autoMessageEnabled       Boolean @default(false) // Ativar/desativar mensagem automática (desativado por padrão)
+  autoMessageHours         Int     @default(24) // Quantas horas sem resposta antes de enviar mensagem
+  autoMessageText          String? @db.Text // Texto da mensagem automática (ex: "Oi, ainda está aí?")
+  autoMessageMaxAttempts   Int     @default(1) // Quantas vezes enviar a mensagem (padrão 1)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -375,5 +383,24 @@ model MessageQueue {
   @@index([status])
   @@index([contactPhone])
   @@index([segment])
+  @@index([createdAt])
+}
+
+// Eventos do sistema para acompanhamento e métricas
+model SystemEvent {
+  id        Int      @id @default(autoincrement())
+  type      String   // Tipo do evento (operator_connected, line_assigned, message_sent, etc.)
+  module    String   // Módulo que gerou o evento (websocket, lines, webhooks, etc.)
+  data      String?  @db.Text // Dados adicionais em JSON
+  userId    Int?     // ID do usuário relacionado (se aplicável)
+  severity  String   @default("info") // info, warning, error, success
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([type])
+  @@index([module])
+  @@index([userId])
+  @@index([severity])
   @@index([createdAt])
 }

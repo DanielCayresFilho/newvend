@@ -23,6 +23,7 @@ import { TemplatesModule } from './templates/templates.module';
 import { ControlPanelModule } from './control-panel/control-panel.module';
 import { HealthController } from './health/health.controller';
 import { MessageQueueModule } from './message-queue/message-queue.module';
+import { SystemEventsModule } from './system-events/system-events.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { MessageQueueModule } from './message-queue/message-queue.module';
     TemplatesModule,
     ControlPanelModule,
     MessageQueueModule,
+    SystemEventsModule,
   ],
   controllers: [HealthController],
   providers: [PrismaService],

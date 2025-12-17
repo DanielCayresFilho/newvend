@@ -7,6 +7,7 @@ import { ConversationsModule } from '../conversations/conversations.module';
 import { ControlPanelModule } from '../control-panel/control-panel.module';
 import { MediaModule } from '../media/media.module';
 import { LinesModule } from '../lines/lines.module';
+import { SystemEventsModule } from '../system-events/system-events.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { LinesModule } from '../lines/lines.module';
     ControlPanelModule,
     MediaModule,
     forwardRef(() => LinesModule),
+    SystemEventsModule,
   ],
   providers: [WebsocketGateway, PrismaService],
   exports: [WebsocketGateway],

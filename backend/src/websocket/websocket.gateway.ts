@@ -15,6 +15,7 @@ import { ConversationsService } from '../conversations/conversations.service';
 import { ControlPanelService } from '../control-panel/control-panel.service';
 import { MediaService } from '../media/media.service';
 import { LinesService } from '../lines/lines.service';
+import { SystemEventsService, EventType, EventModule, EventSeverity } from '../system-events/system-events.service';
 import axios from 'axios';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -49,6 +50,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
     private mediaService: MediaService,
     @Inject(forwardRef(() => LinesService))
     private linesService: LinesService,
+    private systemEventsService: SystemEventsService,
   ) {}
 
   async handleConnection(client: Socket) {
@@ -389,6 +391,17 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         where: { id: userId },
         data: { status: 'Offline' },
       });
+
+      // Registrar evento de desconexão
+      if (client.data.user.role === 'operator') {
+        await this.systemEventsService.logEvent(
+          EventType.OPERATOR_DISCONNECTED,
+          EventModule.WEBSOCKET,
+          { userId: userId, userName: client.data.user.name, email: client.data.user.email },
+          userId,
+          EventSeverity.INFO,
+        );
+      }
       
       console.log(`❌ Usuário ${client.data.user.name} desconectado do WebSocket`);
     }
@@ -998,6 +1011,22 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         user.segment
       );
       
+      // Registrar evento de mensagem enviada
+      await this.systemEventsService.logEvent(
+        EventType.MESSAGE_SENT,
+        EventModule.WEBSOCKET,
+        {
+          userId: user.id,
+          userName: user.name,
+          contactPhone: data.contactPhone,
+          messageType: data.messageType || 'text',
+          lineId: currentLineId,
+          linePhone: line?.phone,
+        },
+        user.id,
+        EventSeverity.INFO,
+      );
+
       // Emitir mensagem para o usuário (usar mesmo formato que new_message)
       client.emit('message-sent', { message: conversation });
       console.log(`📤 [WebSocket] Emitido message-sent para o cliente`);
@@ -1016,6 +1045,24 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         stack: error.stack,
       });
       
+      // Registrar evento de erro
+      await this.systemEventsService.logEvent(
+        error.code === 'ECONNABORTED' || error.message?.includes('timeout')
+          ? EventType.TIMEOUT_ERROR
+          : EventType.API_ERROR,
+        EventModule.WEBSOCKET,
+        {
+          userId: user.id,
+          userName: user.name,
+          contactPhone: data.contactPhone,
+          errorCode: error.code,
+          errorMessage: error.message,
+          status: error.response?.status,
+        },
+        user.id,
+        EventSeverity.ERROR,
+      );
+
       // Detectar timeout específico - realocar linha automaticamente
       if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
         console.error('⏱️ [WebSocket] Timeout na requisição para Evolution API - Realocando linha...');
@@ -1233,6 +1280,21 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
 
         console.log(`✅ [WebSocket] Linha realocada para operador ${operator.name}: ${oldLinePhone || 'sem linha'} → ${availableLine.phone}`);
 
+        // Registrar evento de realocação
+        await this.systemEventsService.logEvent(
+          EventType.LINE_REALLOCATED,
+          EventModule.WEBSOCKET,
+          {
+            userId: userId,
+            userName: operator.name,
+            oldLinePhone: oldLinePhone || null,
+            newLinePhone: availableLine.phone,
+            newLineId: availableLine.id,
+          },
+          userId,
+          EventSeverity.WARNING,
+        );
+
         return {
           success: true,
           oldLinePhone: oldLinePhone || undefined,
@@ -1351,5 +1413,40 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
   // Emitir atualização de conversa tabulada
   async emitConversationTabulated(contactPhone: string, tabulationId: number) {
     this.server.emit('conversation-tabulated', { contactPhone, tabulationId });
+  }
+
+  /**
+   * Método público para enviar mensagem via Evolution API
+   * Usado por serviços externos (ex: AutoMessageService)
+   */
+  async sendMessageToEvolution(
+    evolutionUrl: string,
+    evolutionKey: string,
+    instanceName: string,
+    contactPhone: string,
+    message: string,
+    messageType: string = 'text',
+  ): Promise<void> {
+    try {
+      if (messageType === 'text') {
+        await axios.post(
+          `${evolutionUrl}/message/sendText/${instanceName}`,
+          {
+            number: contactPhone.replace(/\D/g, ''),
+            text: message,
+          },
+          {
+            headers: { 'apikey': evolutionKey },
+            timeout: 30000, // 30 segundos
+          }
+        );
+      } else {
+        // Para outros tipos de mensagem, usar o método completo do handleSendMessage
+        throw new Error('Tipo de mensagem não suportado neste método. Use handleSendMessage para mídia.');
+      }
+    } catch (error: any) {
+      console.error(`❌ [WebSocket] Erro ao enviar mensagem via Evolution API:`, error.message);
+      throw error;
+    }
   }
 }

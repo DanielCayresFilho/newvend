@@ -65,3 +65,104 @@ CREATE INDEX IF NOT EXISTS "MessageQueue_createdAt_idx" ON "MessageQueue"("creat
 -- FROM pg_indexes 
 -- WHERE tablename = 'MessageQueue';
 
+-- 4. Adicionar colunas para mensagem automática quando cliente não responde
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_name = 'ControlPanel' 
+        AND column_name = 'autoMessageEnabled'
+    ) THEN
+        ALTER TABLE "ControlPanel" ADD COLUMN "autoMessageEnabled" BOOLEAN NOT NULL DEFAULT false;
+        RAISE NOTICE 'Coluna autoMessageEnabled adicionada à tabela ControlPanel';
+    ELSE
+        RAISE NOTICE 'Coluna autoMessageEnabled já existe na tabela ControlPanel';
+    END IF;
+END $$;
+
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_name = 'ControlPanel' 
+        AND column_name = 'autoMessageHours'
+    ) THEN
+        ALTER TABLE "ControlPanel" ADD COLUMN "autoMessageHours" INTEGER NOT NULL DEFAULT 24;
+        RAISE NOTICE 'Coluna autoMessageHours adicionada à tabela ControlPanel';
+    ELSE
+        RAISE NOTICE 'Coluna autoMessageHours já existe na tabela ControlPanel';
+    END IF;
+END $$;
+
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_name = 'ControlPanel' 
+        AND column_name = 'autoMessageText'
+    ) THEN
+        ALTER TABLE "ControlPanel" ADD COLUMN "autoMessageText" TEXT;
+        RAISE NOTICE 'Coluna autoMessageText adicionada à tabela ControlPanel';
+    ELSE
+        RAISE NOTICE 'Coluna autoMessageText já existe na tabela ControlPanel';
+    END IF;
+END $$;
+
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_name = 'ControlPanel' 
+        AND column_name = 'autoMessageMaxAttempts'
+    ) THEN
+        ALTER TABLE "ControlPanel" ADD COLUMN "autoMessageMaxAttempts" INTEGER NOT NULL DEFAULT 1;
+        RAISE NOTICE 'Coluna autoMessageMaxAttempts adicionada à tabela ControlPanel';
+    ELSE
+        RAISE NOTICE 'Coluna autoMessageMaxAttempts já existe na tabela ControlPanel';
+    END IF;
+END $$;
+
+-- 5. Criar tabela SystemEvent para eventos do sistema
+CREATE TABLE IF NOT EXISTS "SystemEvent" (
+    "id" SERIAL NOT NULL,
+    "type" TEXT NOT NULL,
+    "module" TEXT NOT NULL,
+    "data" TEXT,
+    "userId" INTEGER,
+    "severity" TEXT NOT NULL DEFAULT 'info',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "SystemEvent_pkey" PRIMARY KEY ("id")
+);
+
+-- 6. Criar índices para a tabela SystemEvent
+CREATE INDEX IF NOT EXISTS "SystemEvent_type_idx" ON "SystemEvent"("type");
+CREATE INDEX IF NOT EXISTS "SystemEvent_module_idx" ON "SystemEvent"("module");
+CREATE INDEX IF NOT EXISTS "SystemEvent_userId_idx" ON "SystemEvent"("userId");
+CREATE INDEX IF NOT EXISTS "SystemEvent_severity_idx" ON "SystemEvent"("severity");
+CREATE INDEX IF NOT EXISTS "SystemEvent_createdAt_idx" ON "SystemEvent"("createdAt");
+
+-- 7. Adicionar foreign key para User (se ainda não existir)
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM information_schema.table_constraints 
+        WHERE constraint_name = 'SystemEvent_userId_fkey'
+    ) THEN
+        ALTER TABLE "SystemEvent" 
+        ADD CONSTRAINT "SystemEvent_userId_fkey" 
+        FOREIGN KEY ("userId") 
+        REFERENCES "User"("id") 
+        ON DELETE SET NULL 
+        ON UPDATE CASCADE;
+        RAISE NOTICE 'Foreign key SystemEvent_userId_fkey adicionada';
+    ELSE
+        RAISE NOTICE 'Foreign key SystemEvent_userId_fkey já existe';
+    END IF;
+END $$;
+

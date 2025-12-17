@@ -6,6 +6,7 @@ import { LinesService } from '../lines/lines.service';
 import { MediaService } from '../media/media.service';
 import { ControlPanelService } from '../control-panel/control-panel.service';
 import { BlocklistService } from '../blocklist/blocklist.service';
+import { SystemEventsService, EventType, EventModule, EventSeverity } from '../system-events/system-events.service';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -21,6 +22,7 @@ export class WebhooksService {
     private mediaService: MediaService,
     private controlPanelService: ControlPanelService,
     private blocklistService: BlocklistService,
+    private systemEventsService: SystemEventsService,
   ) {}
 
   async handleEvolutionMessage(data: any) {
@@ -236,6 +238,21 @@ export class WebhooksService {
               status: 'pending',
             },
           });
+
+          // Registrar evento de mensagem na fila
+          await this.systemEventsService.logEvent(
+            EventType.MESSAGE_QUEUED,
+            EventModule.WEBHOOKS,
+            {
+              contactPhone: from,
+              contactName: contact.name,
+              messageType,
+              lineId: line.id,
+              linePhone: line.phone,
+            },
+            null,
+            EventSeverity.WARNING,
+          );
           
           return { status: 'queued', message: 'Mensagem adicionada à fila (nenhum operador online)' };
         }
@@ -253,6 +270,23 @@ export class WebhooksService {
           messageType,
           mediaUrl,
         });
+
+        // Registrar evento de mensagem recebida
+        await this.systemEventsService.logEvent(
+          EventType.MESSAGE_RECEIVED,
+          EventModule.WEBHOOKS,
+          {
+            contactPhone: from,
+            contactName: contact.name,
+            messageType,
+            userId: finalOperatorId,
+            lineId: line.id,
+            linePhone: line.phone,
+            blockedByPhrase,
+          },
+          finalOperatorId || undefined,
+          blockedByPhrase ? EventSeverity.WARNING : EventSeverity.INFO,
+        );
 
         // Emitir via WebSocket (incluir flag de bloqueio se aplicável)
         const messagePayload = {

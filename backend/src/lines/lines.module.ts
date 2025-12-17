@@ -6,12 +6,14 @@ import { LinesController } from './lines.controller';
 import { PrismaService } from '../prisma.service';
 import { WebsocketModule } from '../websocket/websocket.module';
 import { ControlPanelModule } from '../control-panel/control-panel.module';
+import { SystemEventsModule } from '../system-events/system-events.module';
 
 @Module({
   imports: [
     ScheduleModule.forRoot(),
     forwardRef(() => WebsocketModule),
     ControlPanelModule,
+    SystemEventsModule,
   ],
   controllers: [LinesController],
   providers: [LinesService, LinesSchedulerService, PrismaService],

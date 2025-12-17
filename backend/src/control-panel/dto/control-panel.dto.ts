@@ -109,6 +109,37 @@ export class UpdateControlPanelDto {
   @IsString({ each: true })
   @IsOptional()
   activeEvolutions?: string[]; // Array de nomes de evolution (ex: ["Evolution01", "Evolution02"])
+
+  // Mensagem automática quando cliente não responde (desativado por padrão)
+  @Transform(({ value }) => {
+    if (value === null || value === undefined || value === '') return false;
+    return Boolean(value);
+  })
+  @IsBoolean()
+  @IsOptional()
+  autoMessageEnabled?: boolean;
+
+  @Transform(({ value }) => {
+    if (value === null || value === undefined || value === '') return 24;
+    const num = Number(value);
+    return isNaN(num) ? 24 : num;
+  })
+  @IsNumber()
+  @IsOptional()
+  autoMessageHours?: number;
+
+  @IsString()
+  @IsOptional()
+  autoMessageText?: string;
+
+  @Transform(({ value }) => {
+    if (value === null || value === undefined || value === '') return 1;
+    const num = Number(value);
+    return isNaN(num) ? 1 : num;
+  })
+  @IsNumber()
+  @IsOptional()
+  autoMessageMaxAttempts?: number;
 }
 
 export class AddBlockPhraseDto {
