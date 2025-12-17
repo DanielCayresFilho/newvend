@@ -495,6 +495,16 @@ export class LinesService {
   async handleBannedLine(lineId: number) {
     const line = await this.findOne(lineId);
 
+    // Buscar todos os operadores vinculados à linha (tabela LineOperator)
+    const lineOperators = await this.prisma.lineOperator.findMany({
+      where: { lineId },
+      include: {
+        user: true,
+      },
+    });
+
+    const operatorIds = lineOperators.map(lo => lo.userId);
+
     // Marcar linha como banida
     await this.update(lineId, { lineStatus: 'ban' });
 
@@ -510,16 +520,6 @@ export class LinesService {
       null,
       EventSeverity.ERROR,
     );
-
-    // Buscar todos os operadores vinculados à linha (tabela LineOperator)
-    const lineOperators = await this.prisma.lineOperator.findMany({
-      where: { lineId },
-      include: {
-        user: true,
-      },
-    });
-
-    const operatorIds = lineOperators.map(lo => lo.userId);
 
     if (operatorIds.length > 0) {
       console.log(`🔄 [handleBannedLine] Desvinculando ${operatorIds.length} operador(es) da linha banida ${lineId}`);
