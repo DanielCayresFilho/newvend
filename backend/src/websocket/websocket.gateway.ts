@@ -235,12 +235,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
               // Atualizar user object
               user.line = availableLine.id;
               
-              // Notificar o operador
-              client.emit('line-assigned', {
-                lineId: availableLine.id,
-                linePhone: availableLine.phone,
-                message: `Você foi vinculado à linha ${availableLine.phone} automaticamente.`,
-              });
+              // Notificação removida - operador não precisa saber
                 } catch (error) {
                   console.error(`❌ [WebSocket] Erro ao vincular linha ${availableLine.id} ao operador ${user.id}:`, error.message);
                   // Continuar para tentar outra linha
@@ -293,11 +288,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
                     
                     user.line = fallbackLine.id;
                     
-                    client.emit('line-assigned', {
-                      lineId: fallbackLine.id,
-                      linePhone: fallbackLine.phone,
-                      message: `Você foi vinculado à linha ${fallbackLine.phone} automaticamente.`,
-                    });
+                    // Notificação removida - operador não precisa saber
                   } catch (error) {
                     console.error(`❌ [WebSocket] Erro ao vincular linha ${fallbackLine.id} ao operador ${user.id}:`, error.message);
                     // Continuar para tentar outra linha
@@ -306,10 +297,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
             }
           } else {
               console.error(`❌ [WebSocket] Nenhuma linha disponível para o operador ${user.name} após todas as tentativas`);
-              // Notificar operador que não há linha disponível
-              client.emit('no-line-available', {
-                message: 'Nenhuma linha disponível no momento. Você será notificado quando uma linha for liberada.',
-              });
+              // Notificação removida - operador não precisa saber
               // Nota: Fila de espera será implementada futuramente se necessário
             }
           }
@@ -442,7 +430,6 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
 
     if (!user) {
       console.error('❌ [WebSocket] Usuário não autenticado');
-      client.emit('message-error', { error: 'Usuário não autenticado' });
       return { error: 'Usuário não autenticado' };
     }
 
@@ -540,12 +527,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
 
               console.log(`✅ [WebSocket] Linha ${availableLine.phone} atribuída automaticamente ao operador ${user.name} (segmento ${availableLine.segment || 'sem segmento'})`);
               
-              // Notificar o operador
-              client.emit('line-assigned', {
-                lineId: availableLine.id,
-                linePhone: availableLine.phone,
-                message: `Você foi vinculado à linha ${availableLine.phone} automaticamente.`,
-              });
+              // Notificação removida - operador não precisa saber
             } catch (error) {
               console.error(`❌ [WebSocket] Erro ao vincular linha ${availableLine.id} ao operador ${user.id}:`, error.message);
               // Continuar para tentar outra linha
@@ -622,7 +604,6 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         // Se ainda não tem linha após todas as tentativas
         if (!currentLineId) {
           console.error('❌ [WebSocket] Operador sem linha atribuída e nenhuma linha disponível após todas as tentativas');
-          client.emit('message-error', { error: 'Você não possui uma linha atribuída e não há linhas disponíveis no momento. Entre em contato com o administrador.' });
           return { error: 'Você não possui uma linha atribuída' };
         }
       }
@@ -641,7 +622,6 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
 
       if (!fullUser?.oneToOneActive) {
         console.error('❌ [WebSocket] Operador sem permissão para 1x1');
-        client.emit('message-error', { error: 'Você não tem permissão para iniciar conversas 1x1' });
         return { error: 'Você não tem permissão para iniciar conversas 1x1' };
       }
     }
@@ -650,10 +630,6 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
       // Verificar CPC
       const cpcCheck = await this.controlPanelService.canContactCPC(data.contactPhone, user.segment);
       if (!cpcCheck.allowed) {
-        client.emit('message-error', { 
-          error: cpcCheck.reason,
-          hoursRemaining: cpcCheck.hoursRemaining,
-        });
         return { error: cpcCheck.reason };
       }
 
@@ -664,16 +640,12 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         user.segment
       );
       if (!repescagemCheck.allowed) {
-        client.emit('message-error', { error: repescagemCheck.reason });
         return { error: repescagemCheck.reason };
       }
 
       // Validação de número: Verificar se o número é válido antes de enviar
       const phoneValidation = this.phoneValidationService.isValidFormat(data.contactPhone);
       if (!phoneValidation) {
-        client.emit('message-error', { 
-          error: 'Número de telefone inválido. Verifique o formato do número.' 
-        });
         return { error: 'Número de telefone inválido' };
       }
 
@@ -683,7 +655,6 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
       });
 
       if (!line || line.lineStatus !== 'active') {
-        client.emit('message-error', { error: 'Linha não disponível' });
         return { error: 'Linha não disponível' };
       }
 
@@ -695,10 +666,6 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
       // Rate Limiting: Verificar se a linha pode enviar mensagem
       const canSend = await this.rateLimitingService.canSendMessage(currentLineId);
       if (!canSend) {
-        const rateLimitInfo = await this.rateLimitingService.getRateLimitInfo(currentLineId);
-        client.emit('message-error', { 
-          error: `Limite de mensagens atingido. Você enviou ${rateLimitInfo.messagesToday}/${rateLimitInfo.limit.daily} mensagens hoje e ${rateLimitInfo.messagesLastHour}/${rateLimitInfo.limit.hourly} na última hora. Tente novamente mais tarde.`,
-        });
         return { error: 'Limite de mensagens atingido' };
       }
 
@@ -756,15 +723,9 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
               line = newLine;
               // Continuar o fluxo normalmente com a nova linha
             } else {
-              client.emit('message-error', { 
-                error: `Linha ${line.phone} desconectada. Nova linha atribuída, mas não foi possível enviar a mensagem. Tente novamente.` 
-              });
               return { error: 'Linha desconectada e realocada, mas nova linha não encontrada' };
             }
           } else {
-            client.emit('message-error', { 
-              error: `Linha ${line.phone} não está conectada e não foi possível realocar outra linha. ${reallocationResult.reason || ''}` 
-            });
             return { error: 'Linha não está conectada e não foi possível realocar' };
           }
         }
@@ -1094,10 +1055,8 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         // Sucesso após recuperação - não mostrar erro para o operador
         return { success: true, conversation: recoveryResult.conversation };
       } else {
-        // Falhou após todas as tentativas - mostrar mensagem amigável
-        const friendlyMessage = 'Não foi possível enviar a mensagem no momento. Por favor, tente novamente em alguns instantes.';
-        client.emit('message-error', { error: friendlyMessage });
-        return { error: friendlyMessage };
+        // Falhou após todas as tentativas - não notificar operador
+        return { error: 'Não foi possível enviar a mensagem' };
       }
     }
   }

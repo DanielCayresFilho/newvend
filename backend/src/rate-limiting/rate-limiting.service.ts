@@ -25,57 +25,11 @@ export class RateLimitingService {
    * Verifica se uma linha pode enviar mensagem baseado no rate limit
    * @param lineId ID da linha
    * @returns true se pode enviar, false caso contrário
+   * 
+   * NOTA: Limites desabilitados - sempre retorna true
    */
   async canSendMessage(lineId: number): Promise<boolean> {
-    const line = await this.prisma.linesStock.findUnique({
-      where: { id: lineId },
-    });
-
-    if (!line) {
-      throw new BadRequestException('Linha não encontrada');
-    }
-
-    const lineAge = this.getLineAge(line.createdAt);
-    const limit = await this.getLimit(lineAge, lineId);
-
-    // Verificar limite diário
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const messagesToday = await this.prisma.conversation.count({
-      where: {
-        userLine: lineId,
-        sender: 'operator',
-        datetime: {
-          gte: today,
-        },
-      },
-    });
-
-    if (messagesToday >= limit.daily) {
-      console.warn(`⚠️ [RateLimit] Linha ${line.phone} atingiu limite diário: ${messagesToday}/${limit.daily}`);
-      return false;
-    }
-
-    // Verificar limite horário
-    const oneHourAgo = new Date();
-    oneHourAgo.setHours(oneHourAgo.getHours() - 1);
-
-    const messagesLastHour = await this.prisma.conversation.count({
-      where: {
-        userLine: lineId,
-        sender: 'operator',
-        datetime: {
-          gte: oneHourAgo,
-        },
-      },
-    });
-
-    if (messagesLastHour >= limit.hourly) {
-      console.warn(`⚠️ [RateLimit] Linha ${line.phone} atingiu limite horário: ${messagesLastHour}/${limit.hourly}`);
-      return false;
-    }
-
+    // Limites desabilitados - sempre permite envio
     return true;
   }
 
@@ -96,25 +50,30 @@ export class RateLimitingService {
       baseLimit = this.baseLimits.mature;
     }
 
-    // Ajustar limite baseado na reputação (se disponível)
-    if (this.lineReputationService) {
-      try {
-        const reputationLimit = await this.lineReputationService.getReputationBasedLimit(lineId);
-        // Usar o menor entre o limite base e o limite baseado em reputação
-        // Mas garantir mínimo de 50 mensagens/hora
-        const adjustedDaily = Math.min(baseLimit.daily, reputationLimit);
-        const adjustedHourly = Math.max(50, Math.min(baseLimit.hourly, Math.floor(reputationLimit / 6))); // Mínimo 50/hora
-        return {
-          daily: adjustedDaily,
-          hourly: adjustedHourly,
-        };
-      } catch (error) {
-        console.warn(`⚠️ [RateLimit] Erro ao calcular limite baseado em reputação:`, error.message);
-        // Em caso de erro, usar limite base
-      }
-    }
+    // Limites desabilitados - retornar valores altos para não bloquear
+    // Ajustar limite baseado na reputação (se disponível) - DESABILITADO
+    // if (this.lineReputationService) {
+    //   try {
+    //     const reputationLimit = await this.lineReputationService.getReputationBasedLimit(lineId);
+    //     // Usar o menor entre o limite base e o limite baseado em reputação
+    //     // Mas garantir mínimo de 50 mensagens/hora
+    //     const adjustedDaily = Math.min(baseLimit.daily, reputationLimit);
+    //     const adjustedHourly = Math.max(50, Math.min(baseLimit.hourly, Math.floor(reputationLimit / 6))); // Mínimo 50/hora
+    //     return {
+    //       daily: adjustedDaily,
+    //       hourly: adjustedHourly,
+    //     };
+    //   } catch (error) {
+    //     console.warn(`⚠️ [RateLimit] Erro ao calcular limite baseado em reputação:`, error.message);
+    //     // Em caso de erro, usar limite base
+    //   }
+    // }
 
-    return baseLimit;
+    // Retornar limites muito altos (praticamente ilimitado)
+    return {
+      daily: 999999,
+      hourly: 999999,
+    };
   }
 
   /**
