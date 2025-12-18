@@ -322,18 +322,9 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
               client.emit('no-line-available', {
                 message: 'Nenhuma linha disponível no momento. Você será notificado quando uma linha for liberada.',
               });
-              // Adicionar operador em fila de espera (criar tabela se necessário)
-              try {
-                await (this.prisma as any).operatorWaitingQueue.upsert({
-                  where: { userId: user.id },
-                  update: { createdAt: new Date() },
-                  create: { userId: user.id, createdAt: new Date() },
-                });
-                console.log(`📋 [WebSocket] Operador ${user.name} adicionado à fila de espera por linha`);
-              } catch (error) {
-                // Se a tabela não existir, apenas logar
-                console.warn(`⚠️ [WebSocket] Não foi possível adicionar operador à fila de espera:`, error.message);
-              }
+              // Nota: Fila de espera será implementada futuramente se necessário
+              // Por enquanto, apenas notificamos o operador
+              console.log(`📋 [WebSocket] Operador ${user.name} sem linha disponível - será notificado quando houver linha`);
             }
           }
         }
@@ -636,9 +627,17 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
                   linePhone: fallbackLine.phone,
                   message: `Você foi vinculado à linha ${fallbackLine.phone} automaticamente.`,
                 });
-              } catch (error) {
-                console.error(`❌ [WebSocket] Erro ao vincular linha ${fallbackLine.id} ao operador ${user.id}:`, error.message);
-                // Continuar para tentar outra linha
+              } catch (error: any) {
+                // Se o erro for "já está vinculado", apenas logar e continuar (não é erro crítico)
+                if (error.message?.includes('já está vinculado')) {
+                  console.log(`ℹ️ [WebSocket] Operador ${user.id} já está vinculado à linha ${fallbackLine.id}`);
+                  // Atualizar user.line mesmo assim
+                  user.line = fallbackLine.id;
+                  currentLineId = fallbackLine.id;
+                } else {
+                  console.error(`❌ [WebSocket] Erro ao vincular linha ${fallbackLine.id} ao operador ${user.id}:`, error.message);
+                  // Continuar para tentar outra linha
+                }
               }
             }
           }
@@ -750,14 +749,30 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
           evolution.evolutionKey,
           instanceName,
         );
-        if (connectionState !== 'open' && connectionState !== 'OPEN' && connectionState !== 'connected' && connectionState !== 'CONNECTED') {
-          console.warn(`⚠️ [WebSocket] Linha ${line.phone} não está conectada no Evolution (status: ${connectionState})`);
+        // Verificar se status é realmente desconectado
+        // "unknown" não é considerado desconectado (pode ser cache ou API não retornou status)
+        // Apenas status explicitamente desconectados devem acionar realocação
+        const isConnected = connectionState === 'open' || 
+                           connectionState === 'OPEN' || 
+                           connectionState === 'connected' || 
+                           connectionState === 'CONNECTED';
+        
+        const isExplicitlyDisconnected = connectionState === 'close' || 
+                                        connectionState === 'CLOSE' || 
+                                        connectionState === 'disconnected' ||
+                                        connectionState === 'DISCONNECTED' ||
+                                        connectionState === 'closeTimeout';
+        
+        // Se não está explicitamente desconectado, considerar como conectado (incluindo "unknown")
+        if (isExplicitlyDisconnected && !isConnected) {
+          console.warn(`⚠️ [WebSocket] Linha ${line.phone} está explicitamente desconectada no Evolution (status: ${connectionState})`);
           
           // Realocação automática: buscar nova linha para o operador
           console.log(`🔄 [WebSocket] Iniciando realocação automática de linha para operador ${user.name}...`);
-          const reallocationResult = await this.lineAssignmentService.reallocateLineForOperator(user.id, user.segment);
+          const reallocationResult = await this.lineAssignmentService.reallocateLineForOperator(user.id, user.segment, currentLineId);
           
-          if (reallocationResult.success && reallocationResult.lineId) {
+          // Verificar se realmente conseguiu uma NOVA linha (diferente da atual)
+          if (reallocationResult.success && reallocationResult.lineId && reallocationResult.lineId !== currentLineId) {
             // Atualizar user object
             user.line = reallocationResult.lineId;
             currentLineId = reallocationResult.lineId;
@@ -789,9 +804,8 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
           }
         }
       } catch (healthError: any) {
-        console.error(`❌ [WebSocket] Erro ao verificar health da linha ${line.phone}:`, healthError.message);
-        // Continuar mesmo se o health check falhar (pode ser problema temporário)
-        console.warn(`⚠️ [WebSocket] Continuando envio apesar do erro no health check`);
+        // Erro no health check não deve bloquear envio (pode ser problema temporário da API)
+        console.warn(`⚠️ [WebSocket] Erro ao verificar health da linha ${line.phone}: ${healthError.message}. Continuando envio.`);
       }
 
       // Enviar mensagem via Evolution API
