@@ -45,9 +45,9 @@ export class TemplatesService {
   }
 
   async findAll(filters?: any) {
-    const { search, lineId, segmentId, status, ...validFilters } = filters || {};
+    const { search, lineId, segmentId, status } = filters || {};
 
-    const where: any = { ...validFilters };
+    const where: any = {};
 
     if (search) {
       where.OR = [
@@ -57,11 +57,17 @@ export class TemplatesService {
     }
 
     if (lineId) {
-      where.lineId = parseInt(lineId);
+      const parsedLineId = parseInt(lineId);
+      if (!isNaN(parsedLineId)) {
+        where.lineId = parsedLineId;
+      }
     }
 
     if (segmentId) {
-      where.segmentId = parseInt(segmentId);
+      const parsedSegmentId = parseInt(segmentId);
+      if (!isNaN(parsedSegmentId)) {
+        where.segmentId = parsedSegmentId;
+      }
     }
 
     if (status) {
@@ -73,12 +79,23 @@ export class TemplatesService {
       orderBy: { createdAt: 'desc' },
     });
 
-    // Parse JSON fields
-    return templates.map(template => ({
-      ...template,
-      buttons: template.buttons ? JSON.parse(template.buttons) : null,
-      variables: template.variables ? JSON.parse(template.variables) : null,
-    }));
+    // Parse JSON fields com tratamento de erro
+    return templates.map(template => {
+      try {
+        return {
+          ...template,
+          buttons: template.buttons ? JSON.parse(template.buttons) : null,
+          variables: template.variables ? JSON.parse(template.variables) : null,
+        };
+      } catch (error) {
+        // Se houver erro ao fazer parse, retornar sem parsear
+        return {
+          ...template,
+          buttons: template.buttons,
+          variables: template.variables,
+        };
+      }
+    });
   }
 
   async findBySegment(segmentId: number) {

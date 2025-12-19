@@ -18,6 +18,7 @@ import { LineAssignmentModule } from '../line-assignment/line-assignment.module'
 import { MessageValidationModule } from '../message-validation/message-validation.module';
 import { MessageSendingModule } from '../message-sending/message-sending.module';
 import { LoggerModule } from '../logger/logger.module';
+import { TemplatesModule } from '../templates/templates.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { LoggerModule } from '../logger/logger.module';
     MessageValidationModule,
     MessageSendingModule,
     LoggerModule,
+    TemplatesModule,
   ],
   providers: [WebsocketGateway, PrismaService],
   exports: [WebsocketGateway],

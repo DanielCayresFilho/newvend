@@ -26,6 +26,8 @@ import { LineAssignmentService } from '../line-assignment/line-assignment.servic
 import { MessageValidationService } from '../message-validation/message-validation.service';
 import { MessageSendingService } from '../message-sending/message-sending.service';
 import { AppLoggerService } from '../logger/logger.service';
+import { TemplatesService } from '../templates/templates.service';
+import { TemplateVariableDto } from '../templates/dto/send-template.dto';
 import axios from 'axios';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -71,6 +73,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
     private messageValidationService: MessageValidationService,
     private messageSendingService: MessageSendingService,
     private logger: AppLoggerService,
+    private templatesService: TemplatesService,
   ) {}
 
   async handleConnection(client: Socket) {
@@ -423,7 +426,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
   @SubscribeMessage('send-message')
   async handleSendMessage(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { contactPhone: string; message: string; messageType?: string; mediaUrl?: string; fileName?: string; isNewConversation?: boolean },
+    @MessageBody() data: { contactPhone: string; message: string; messageType?: string; mediaUrl?: string; fileName?: string; isNewConversation?: boolean; templateId?: number; templateVariables?: TemplateVariableDto[] },
   ) {
     const startTime = Date.now(); // Para métricas de latência
     const user = client.data.user;
@@ -675,6 +678,73 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
       const humanizedDelay = await this.humanizationService.getHumanizedDelay(messageLength, isResponse);
       
       await this.humanizationService.sleep(humanizedDelay);
+
+      // Se templateId foi fornecido, usar TemplatesService para enviar template
+      if (data.templateId) {
+        try {
+          // Buscar contato para obter nome
+          const contact = await this.prisma.contact.findFirst({
+            where: { phone: data.contactPhone },
+          });
+
+          // Enviar template via TemplatesService
+          const templateResult = await this.templatesService.sendTemplate({
+            templateId: data.templateId,
+            phone: data.contactPhone,
+            contactName: contact?.name || data.message || 'Contato',
+            variables: data.templateVariables || [],
+            lineId: currentLineId,
+          });
+
+          if (templateResult.success) {
+            // Buscar conversa criada pelo template
+            const conversation = await this.prisma.conversation.findFirst({
+              where: {
+                contactPhone: data.contactPhone,
+                userLine: currentLineId,
+              },
+              orderBy: { datetime: 'desc' },
+            });
+
+            // Registrar mensagem do operador para controle de repescagem
+            await this.controlPanelService.registerOperatorMessage(
+              data.contactPhone,
+              user.id,
+              user.segment
+            );
+
+            // Registrar evento de mensagem enviada
+            await this.systemEventsService.logEvent(
+              EventType.MESSAGE_SENT,
+              EventModule.WEBSOCKET,
+              {
+                userId: user.id,
+                userName: user.name,
+                contactPhone: data.contactPhone,
+                messageType: 'template',
+                lineId: currentLineId,
+                linePhone: line?.phone,
+                templateId: data.templateId,
+              },
+              user.id,
+              EventSeverity.INFO,
+            );
+
+            // Emitir mensagem para o usuário
+            if (conversation) {
+              client.emit('message-sent', { message: conversation });
+              this.emitToSupervisors(user.segment, 'new_message', { message: conversation });
+            }
+
+            return { success: true, conversation, templateMessageId: templateResult.templateMessageId };
+          } else {
+            return { error: templateResult.error || 'Erro ao enviar template' };
+          }
+        } catch (templateError: any) {
+          console.error('❌ [WebSocket] Erro ao enviar template:', templateError);
+          return { error: templateError.message || 'Erro ao enviar template' };
+        }
+      }
 
       // Health check: Verificar se a linha está realmente conectada no Evolution (com cache)
       let connectionState: string;
