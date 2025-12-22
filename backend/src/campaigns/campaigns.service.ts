@@ -71,9 +71,9 @@ export class CampaignsService {
     }
 
     // Buscar linhas disponíveis (através dos operadores)
+    // Extrair todas as linhas dos operadores (filtrar apenas linhas ativas)
     const availableLines = onlineOperators
-      .filter(op => op.line !== null)
-      .map(op => op.line!)
+      .flatMap(op => op.lines.filter(line => line.lineStatus === 'active').map(line => line.id))
       .filter((lineId, index, self) => self.indexOf(lineId) === index); // Remover duplicatas
 
     if (availableLines.length === 0) {
@@ -148,11 +148,14 @@ export class CampaignsService {
     }
 
     // Encontrar operador para cada linha
+    // Criar mapeamento de linhaId -> operador (incluir todas as linhas de cada operador)
     const lineToOperator = new Map<number, typeof onlineOperators[0]>();
     onlineOperators.forEach(op => {
-      if (op.line && !lineToOperator.has(op.line)) {
-        lineToOperator.set(op.line, op);
-      }
+      op.lines.forEach(line => {
+        if (line.lineStatus === 'active' && !lineToOperator.has(line.id)) {
+          lineToOperator.set(line.id, op);
+        }
+      });
     });
 
     // Processar cada rodada
