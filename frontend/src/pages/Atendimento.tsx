@@ -32,7 +32,7 @@ import {
 } from "@/components/ui/select";
 import { useNotificationSound } from "@/hooks/useNotificationSound";
 import { toast } from "@/hooks/use-toast";
-import { conversationsService, tabulationsService, contactsService, templatesService, Contact, Conversation as APIConversation, Tabulation, Template, getAuthToken } from "@/services/api";
+import { conversationsService, tabulationsService, contactsService, templatesService, segmentsService, Contact, Conversation as APIConversation, Tabulation, Template, getAuthToken } from "@/services/api";
 import { useRealtimeConnection, useRealtimeSubscription } from "@/hooks/useRealtimeConnection";
 import { WS_EVENTS, realtimeSocket } from "@/services/websocket";
 import { format } from "date-fns";
@@ -101,6 +101,7 @@ export default function Atendimento() {
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [templateVariables, setTemplateVariables] = useState<Record<string, string>>({});
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
+  const [segmentAllowsFreeMessage, setSegmentAllowsFreeMessage] = useState<boolean>(true); // Default true para não bloquear
 
   // Subscribe to new messages in real-time
   useRealtimeSubscription(WS_EVENTS.NEW_MESSAGE, (data: any) => {
@@ -495,12 +496,26 @@ export default function Atendimento() {
     }
   }, [selectedConversation, editingContact, editContactName, editContactCpf, editContactContract, editContactIsCPC, user, playSuccessSound, playErrorSound]);
 
-  // Carregar templates
+  // Carregar templates e informações do segmento
   const loadTemplates = useCallback(async () => {
     try {
       setIsLoadingTemplates(true);
       const data = await templatesService.list({ segmentId: user?.segmentId });
       setTemplates(data);
+
+      // Carregar informações do segmento para verificar allowsFreeMessage
+      if (user?.segmentId) {
+        try {
+          const segment = await segmentsService.getById(user.segmentId);
+          setSegmentAllowsFreeMessage(segment.allowsFreeMessage ?? true);
+        } catch (error) {
+          console.error('Error loading segment info:', error);
+          // Se não conseguir carregar, assume true (permite mensagens livres)
+          setSegmentAllowsFreeMessage(true);
+        }
+      } else {
+        setSegmentAllowsFreeMessage(true);
+      }
     } catch (error) {
       console.error('Error loading templates:', error);
     } finally {
@@ -752,14 +767,25 @@ export default function Atendimento() {
         });
         return;
       }
-    } else if (!newContactMessage.trim()) {
-      // Se não estiver usando template, mensagem é obrigatória
-      toast({
-        title: "Mensagem obrigatória",
-        description: "Digite a mensagem que deseja enviar ou selecione um template",
-        variant: "destructive",
-      });
-      return;
+    } else {
+      // Se não permite mensagem livre e não está usando template, bloquear
+      if (!segmentAllowsFreeMessage) {
+        toast({
+          title: "Template obrigatório",
+          description: "Este segmento não permite mensagens livres. Selecione um template para enviar a primeira mensagem.",
+          variant: "destructive",
+        });
+        return;
+      }
+      // Se permite mensagem livre, verificar se há mensagem
+      if (!newContactMessage.trim()) {
+        toast({
+          title: "Mensagem obrigatória",
+          description: "Digite a mensagem que deseja enviar ou selecione um template",
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     if (!user?.lineId) {
@@ -1043,8 +1069,19 @@ export default function Atendimento() {
                       </div>
                     )}
 
-                    {/* Input de Mensagem - SEMPRE desabilitado para primeira mensagem (deve ser template) */}
-                    {!selectedTemplate && (
+                    {/* Input de Mensagem - Habilitado apenas se o segmento permitir mensagens livres */}
+                    {!selectedTemplate && segmentAllowsFreeMessage && (
+                      <div className="space-y-2">
+                        <Label htmlFor="message">Mensagem *</Label>
+                        <Input 
+                          id="message" 
+                          placeholder="Digite sua mensagem..."
+                          value={newContactMessage}
+                          onChange={(e) => setNewContactMessage(e.target.value)}
+                        />
+                      </div>
+                    )}
+                    {!selectedTemplate && !segmentAllowsFreeMessage && (
                       <div className="space-y-2">
                         <Label htmlFor="message">Mensagem</Label>
                         <Input 
@@ -1055,7 +1092,7 @@ export default function Atendimento() {
                           disabled={true}
                         />
                         <p className="text-xs text-muted-foreground">
-                          A primeira mensagem deve ser enviada através de um template
+                          Este segmento não permite mensagens livres. Selecione um template para enviar a primeira mensagem.
                         </p>
                       </div>
                     )}
@@ -1068,8 +1105,18 @@ export default function Atendimento() {
                     }}>
                       Cancelar
                     </Button>
-                    <Button onClick={handleNewConversation} disabled={!selectedTemplate}>
-                      {selectedTemplate ? 'Enviar Template' : 'Selecione um Template'}
+                    <Button 
+                      onClick={handleNewConversation} 
+                      disabled={
+                        !selectedTemplate && 
+                        (!segmentAllowsFreeMessage || !newContactMessage.trim())
+                      }
+                    >
+                      {selectedTemplate 
+                        ? 'Enviar Template' 
+                        : segmentAllowsFreeMessage 
+                          ? 'Enviar Mensagem' 
+                          : 'Selecione um Template'}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
