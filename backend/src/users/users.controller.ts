@@ -26,7 +26,7 @@ export class UsersController {
   }
 
   @Get('online-operators')
-  @Roles(Role.admin, Role.supervisor)
+  @Roles(Role.admin)
   getOnlineOperators(@Query('segment') segment?: string) {
     return this.usersService.getOnlineOperators(segment ? parseInt(segment) : undefined);
   }

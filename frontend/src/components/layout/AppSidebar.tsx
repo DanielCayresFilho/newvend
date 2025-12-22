@@ -20,7 +20,8 @@ import {
   Moon,
   Sun,
   TrendingUp,
-  Activity
+  Activity,
+  UserCheck
 } from "lucide-react";
 import { useLocation, Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -54,6 +55,7 @@ const menuItems: MenuItem[] = [
   { title: "Evolution", url: "/evolution", icon: RefreshCw, color: "text-primary", roles: ['admin'] },
   { title: "Linhas", url: "/linhas", icon: Phone, color: "text-whatsapp", roles: ['admin', 'ativador'] },
   { title: "Usuários", url: "/usuarios", icon: Users, color: "text-warning", roles: ['admin'] },
+  { title: "Operadores Online", url: "/operadores-online", icon: UserCheck, color: "text-success", roles: ['admin'] },
   { title: "Tags", url: "/tags", icon: Tags, color: "text-cyan", roles: ['admin'] },
   { title: "Logs API", url: "/logs", icon: Code, color: "text-destructive", roles: ['admin'] },
 ];

@@ -27,6 +27,7 @@ import Templates from "./pages/Templates";
 import PainelControle from "./pages/PainelControle";
 import ProdutividadeAtivadores from "./pages/ProdutividadeAtivadores";
 import Acompanhamento from "./pages/Acompanhamento";
+import OperadoresOnline from "./pages/OperadoresOnline";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -88,6 +89,7 @@ function AppRoutes() {
       <Route path="/painel-controle" element={<ProtectedRoute><PainelControle /></ProtectedRoute>} />
       <Route path="/produtividade-ativadores" element={<ProtectedRoute><ProdutividadeAtivadores /></ProtectedRoute>} />
       <Route path="/acompanhamento" element={<ProtectedRoute><Acompanhamento /></ProtectedRoute>} />
+      <Route path="/operadores-online" element={<ProtectedRoute><OperadoresOnline /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

@@ -138,12 +138,52 @@ export class UsersService {
   }
 
   async getOnlineOperators(segment?: number) {
-    return this.prisma.user.findMany({
+    const operators = await this.prisma.user.findMany({
       where: {
         role: 'operator',
         status: 'Online',
         ...(segment && { segment }),
       },
+      include: {
+        lineOperators: {
+          include: {
+            line: {
+              select: {
+                id: true,
+                phone: true,
+                lineStatus: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // Buscar segmentos para incluir nomes
+    const segments = await this.prisma.segment.findMany();
+    const segmentMap = new Map(segments.map(s => [s.id, s]));
+
+    // Transformar dados para incluir informações de linha e segmento
+    return operators.map(operator => {
+      const lines = operator.lineOperators.map(lo => ({
+        id: lo.line.id,
+        phone: lo.line.phone,
+        lineStatus: lo.line.lineStatus,
+      }));
+
+      return {
+        id: operator.id,
+        name: operator.name,
+        email: operator.email,
+        role: operator.role,
+        segment: operator.segment,
+        segmentName: operator.segment ? segmentMap.get(operator.segment)?.name : null,
+        status: operator.status,
+        lines: lines,
+        oneToOneActive: operator.oneToOneActive,
+        createdAt: operator.createdAt,
+        updatedAt: operator.updatedAt,
+      };
     });
   }
 
