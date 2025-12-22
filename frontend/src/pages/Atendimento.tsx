@@ -79,6 +79,7 @@ export default function Atendimento() {
   const previousConversationsRef = useRef<ConversationGroup[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [isCreatingConversation, setIsCreatingConversation] = useState(false);
   
   // Estado para filtro de conversas
   type FilterType = 'todas' | 'stand-by' | 'atendimento' | 'finalizadas';
@@ -177,6 +178,9 @@ export default function Atendimento() {
       // Adicionar mensagem à conversa ativa
       const newMsg = data.message as APIConversation;
       
+      // Resetar loading de envio de mensagem
+      setIsSending(false);
+      
       // Mostrar toast de sucesso
       playSuccessSound();
       toast({
@@ -184,15 +188,9 @@ export default function Atendimento() {
         description: "Sua mensagem foi enviada com sucesso",
       });
       
-      // Se estava criando nova conversa, fechar dialog e limpar campos
-      if (isNewConversationOpen) {
-        setIsNewConversationOpen(false);
-        setNewContactName("");
-        setNewContactPhone("");
-        setNewContactCpf("");
-        setNewContactContract("");
-        setNewContactMessage("");
-      }
+      // Se estava criando nova conversa, resetar loading
+      // O modal já foi fechado anteriormente, apenas resetar o estado
+      setIsCreatingConversation(false);
       
       setConversations(prev => {
         const existing = prev.find(c => c.contactPhone === newMsg.contactPhone);
@@ -250,6 +248,12 @@ export default function Atendimento() {
     console.log('[Atendimento] Message error received:', data);
     if (data?.error) {
       playErrorSound();
+      
+      // Resetar loading de envio de mensagem
+      setIsSending(false);
+      
+      // Resetar loading de criação de conversa
+      setIsCreatingConversation(false);
       
       // Determinar título baseado no tipo de erro
       let title = "Mensagem bloqueada";
@@ -667,7 +671,10 @@ export default function Atendimento() {
   }, [handleFileUpload]);
 
   const handleSendMessage = useCallback(async () => {
-    if (!message.trim() || !selectedConversation || isSending) return;
+    // Prevenir múltiplos cliques
+    if (!message.trim() || !selectedConversation || isSending) {
+      return;
+    }
 
     setIsSending(true);
     const messageText = message.trim();
@@ -684,6 +691,7 @@ export default function Atendimento() {
         });
         
         // A resposta virá via evento 'message-sent' (sucesso) ou 'message-error' (erro)
+        // O isSending será resetado quando receber a confirmação, não aqui no finally
         // Não mostrar sucesso imediatamente - aguardar confirmação
       } else {
         // Fallback: Usar REST API (apenas salva no banco, não envia via WhatsApp)
@@ -707,18 +715,19 @@ export default function Atendimento() {
         });
         
         await loadConversations();
+        setIsSending(false); // Resetar apenas no fallback (REST API)
       }
     } catch (error) {
       setMessage(messageText); // Restaurar mensagem se falhou
+      setIsSending(false); // Resetar em caso de erro
       playErrorSound();
       toast({
         title: "Erro ao enviar",
         description: error instanceof Error ? error.message : "Erro ao enviar mensagem",
         variant: "destructive",
       });
-    } finally {
-      setIsSending(false);
     }
+    // Não usar finally para WebSocket - o reset será feito via eventos
   }, [message, selectedConversation, isSending, user, isRealtimeConnected, playSuccessSound, playErrorSound, loadConversations]);
 
   const handleTabulate = useCallback(async (tabulationId: number) => {
@@ -746,6 +755,11 @@ export default function Atendimento() {
   }, [selectedConversation, playSuccessSound, playErrorSound]);
 
   const handleNewConversation = useCallback(async () => {
+    // Prevenir múltiplos cliques
+    if (isCreatingConversation) {
+      return;
+    }
+
     if (!newContactName.trim() || !newContactPhone.trim()) {
       toast({
         title: "Campos obrigatórios",
@@ -788,23 +802,41 @@ export default function Atendimento() {
       }
     }
 
-    if (!user?.lineId) {
-      toast({
-        title: "Linha não atribuída",
-        description: "Você precisa ter uma linha atribuída para iniciar conversas",
-        variant: "destructive",
-      });
-      return;
-    }
-
+    setIsCreatingConversation(true);
+    
+    // Salvar valores antes de limpar
+    const contactNameValue = newContactName.trim();
+    const contactPhoneValue = newContactPhone.trim();
+    const contactCpfValue = newContactCpf.trim();
+    const contactContractValue = newContactContract.trim();
+    const contactMessageValue = newContactMessage.trim();
+    const selectedTemplateValue = selectedTemplate;
+    const templateVariablesValue = { ...templateVariables };
+    
+    // Fechar modal imediatamente e limpar campos
+    setIsNewConversationOpen(false);
+    setNewContactName("");
+    setNewContactPhone("");
+    setNewContactCpf("");
+    setNewContactContract("");
+    setNewContactMessage("");
+    setSelectedTemplate(null);
+    setTemplateVariables({});
+    
+    // Mostrar toast de "Enviando mensagem..."
+    toast({
+      title: "Enviando mensagem...",
+      description: "Aguarde a confirmação de envio",
+    });
+    
     try {
       // Primeiro, criar ou atualizar o contato
       try {
         await contactsService.create({
-          name: newContactName.trim(),
-          phone: newContactPhone.trim(),
-          cpf: newContactCpf.trim() || undefined,
-          contract: newContactContract.trim() || undefined,
+          name: contactNameValue,
+          phone: contactPhoneValue,
+          cpf: contactCpfValue || undefined,
+          contract: contactContractValue || undefined,
           segment: user.segmentId,
         });
       } catch {
@@ -815,38 +847,36 @@ export default function Atendimento() {
       if (isRealtimeConnected) {
         console.log('[Atendimento] Criando nova conversa via WebSocket...');
         
-        if (selectedTemplate) {
+        if (selectedTemplateValue) {
           // Enviar template com variáveis
-          const variables = (selectedTemplate.variables || []).map(v => ({
+          const variables = (selectedTemplateValue.variables || []).map(v => ({
             key: v,
-            value: templateVariables[v] || '',
+            value: templateVariablesValue[v] || '',
           }));
           
           realtimeSocket.send('send-message', {
-            contactPhone: newContactPhone.trim(),
-            templateId: selectedTemplate.id,
+            contactPhone: contactPhoneValue,
+            templateId: selectedTemplateValue.id,
             templateVariables: variables,
             isNewConversation: true,
           });
         } else {
           // Enviar mensagem normal
           realtimeSocket.send('send-message', {
-            contactPhone: newContactPhone.trim(),
-            message: newContactMessage.trim(),
+            contactPhone: contactPhoneValue,
+            message: contactMessageValue,
             messageType: 'text',
             isNewConversation: true, // Indica que é 1x1 para verificar permissão
           });
         }
 
-        // Não mostrar sucesso imediatamente - aguardar confirmação ou erro
-        // O sucesso será mostrado quando receber 'message-sent' (e o dialog será fechado)
-        // O erro será mostrado quando receber 'message-error' (dialog permanece aberto)
+        // O sucesso/erro será mostrado quando receber 'message-sent' ou 'message-error'
       } else {
         // Fallback: Apenas salvar no banco
         await conversationsService.create({
-          contactName: newContactName.trim(),
-          contactPhone: newContactPhone.trim(),
-          message: `Olá ${newContactName.trim()}, tudo bem?`,
+          contactName: contactNameValue,
+          contactPhone: contactPhoneValue,
+          message: `Olá ${contactNameValue}, tudo bem?`,
           sender: 'operator',
           messageType: 'text',
           userName: user.name,
@@ -862,19 +892,13 @@ export default function Atendimento() {
         });
         
         await loadConversations();
-      
-        // Fechar dialog apenas se não estiver usando WebSocket
-      setIsNewConversationOpen(false);
-      setNewContactName("");
-      setNewContactPhone("");
-      setNewContactCpf("");
-      setNewContactContract("");
-      setNewContactMessage("");
-      setSelectedTemplate(null);
-      setTemplateVariables({});
+        setIsCreatingConversation(false);
       }
-      // Se usar WebSocket, o dialog será fechado quando receber 'message-sent'
+      // Se usar WebSocket, o isCreatingConversation será resetado quando receber 'message-sent' ou 'message-error'
+      // Não resetar aqui no finally para não interferir com o fluxo do WebSocket
     } catch (error) {
+      // Erro ao criar contato ou enviar (fallback REST)
+      setIsCreatingConversation(false);
       playErrorSound();
       toast({
         title: "Erro ao criar conversa",
@@ -882,7 +906,7 @@ export default function Atendimento() {
         variant: "destructive",
       });
     }
-  }, [newContactName, newContactPhone, newContactCpf, newContactContract, newContactMessage, user, isRealtimeConnected, playSuccessSound, playErrorSound, loadConversations, selectedTemplate, templateVariables]);
+  }, [newContactName, newContactPhone, newContactCpf, newContactContract, newContactMessage, user, isRealtimeConnected, playSuccessSound, playErrorSound, loadConversations, selectedTemplate, templateVariables, isCreatingConversation, segmentAllowsFreeMessage]);
   
   // Quando selecionar template no modal, preencher nome automaticamente
   useEffect(() => {
@@ -953,11 +977,14 @@ export default function Atendimento() {
                 <RefreshCw className="h-4 w-4" />
               </Button>
               <Dialog open={isNewConversationOpen} onOpenChange={(open) => {
-                setIsNewConversationOpen(open);
-                if (!open) {
-                  // Limpar estados ao fechar
-                  setSelectedTemplate(null);
-                  setTemplateVariables({});
+                if (!isCreatingConversation) {
+                  setIsNewConversationOpen(open);
+                  if (!open) {
+                    // Limpar estados ao fechar
+                    setIsCreatingConversation(false);
+                    setSelectedTemplate(null);
+                    setTemplateVariables({});
+                  }
                 }
               }}>
                 <DialogTrigger asChild>
@@ -980,6 +1007,7 @@ export default function Atendimento() {
                         placeholder="Nome do contato"
                         value={newContactName}
                         onChange={(e) => setNewContactName(e.target.value)}
+                        disabled={isCreatingConversation}
                       />
                     </div>
                     <div className="space-y-2">
@@ -989,6 +1017,7 @@ export default function Atendimento() {
                         placeholder="+55 11 99999-9999"
                         value={newContactPhone}
                         onChange={(e) => setNewContactPhone(e.target.value)}
+                        disabled={isCreatingConversation}
                       />
                     </div>
                     <div className="space-y-2">
@@ -998,6 +1027,7 @@ export default function Atendimento() {
                         placeholder="000.000.000-00"
                         value={newContactCpf}
                         onChange={(e) => setNewContactCpf(e.target.value)}
+                        disabled={isCreatingConversation}
                       />
                     </div>
                     <div className="space-y-2">
@@ -1007,6 +1037,7 @@ export default function Atendimento() {
                         placeholder="Número do contrato"
                         value={newContactContract}
                         onChange={(e) => setNewContactContract(e.target.value)}
+                        disabled={isCreatingConversation}
                       />
                     </div>
                     <div className="space-y-2">
@@ -1024,7 +1055,7 @@ export default function Atendimento() {
                             setNewContactMessage(''); // Limpar mensagem quando selecionar template
                           }
                         }}
-                        disabled={isLoadingTemplates}
+                        disabled={isLoadingTemplates || isCreatingConversation}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder={isLoadingTemplates ? "Carregando..." : "Selecione um template (opcional)"} />
@@ -1058,6 +1089,7 @@ export default function Atendimento() {
                                 [varName]: e.target.value,
                               }))}
                               className="h-8"
+                              disabled={isCreatingConversation}
                             />
                           </div>
                         ))}
@@ -1078,6 +1110,7 @@ export default function Atendimento() {
                           placeholder="Digite sua mensagem..."
                           value={newContactMessage}
                           onChange={(e) => setNewContactMessage(e.target.value)}
+                          disabled={isCreatingConversation}
                         />
                       </div>
                     )}
@@ -1098,21 +1131,32 @@ export default function Atendimento() {
                     )}
                   </div>
                   <DialogFooter>
-                    <Button variant="outline" onClick={() => {
-                      setIsNewConversationOpen(false);
-                      setSelectedTemplate(null);
-                      setTemplateVariables({});
-                    }}>
+                    <Button 
+                      variant="outline" 
+                      onClick={() => {
+                        setIsNewConversationOpen(false);
+                        setSelectedTemplate(null);
+                        setTemplateVariables({});
+                        setIsCreatingConversation(false);
+                      }}
+                      disabled={isCreatingConversation}
+                    >
                       Cancelar
                     </Button>
                     <Button 
                       onClick={handleNewConversation} 
                       disabled={
-                        !selectedTemplate && 
-                        (!segmentAllowsFreeMessage || !newContactMessage.trim())
+                        isCreatingConversation ||
+                        (!selectedTemplate && 
+                        (!segmentAllowsFreeMessage || !newContactMessage.trim()))
                       }
                     >
-                      {selectedTemplate 
+                      {isCreatingConversation ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Enviando...
+                        </>
+                      ) : selectedTemplate 
                         ? 'Enviar Template' 
                         : segmentAllowsFreeMessage 
                           ? 'Enviar Mensagem' 
@@ -1515,13 +1559,13 @@ export default function Atendimento() {
                     accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx"
                     className="hidden"
                     id="file-upload-input"
-                    disabled={isUploadingFile || !selectedConversation}
+                    disabled={isUploadingFile || !selectedConversation || isSending}
                   />
                   <Button
                     variant="outline"
                     size="icon"
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={isUploadingFile || !selectedConversation}
+                    disabled={isUploadingFile || !selectedConversation || isSending}
                     title="Enviar arquivo"
                   >
                     {isUploadingFile ? (

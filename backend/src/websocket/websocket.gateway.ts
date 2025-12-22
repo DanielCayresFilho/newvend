@@ -469,31 +469,36 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         availableLine = await this.findAvailableLineForOperator(filteredLines, user.id, user.segment);
       }
 
-      // 2. Se não encontrou linha do segmento, buscar linha padrão (segmento "Padrão")
+      // 2. Se não encontrou linha do segmento, buscar linha padrão (segment: null)
       if (!availableLine) {
-        const defaultSegment = await this.prisma.segment.findUnique({
-          where: { name: 'Padrão' },
+        const defaultLines = await this.prisma.linesStock.findMany({
+          where: {
+            lineStatus: 'active',
+            segment: null, // Linhas padrão são as que têm segment: null
+          },
         });
 
-        if (defaultSegment) {
-          const defaultLines = await this.prisma.linesStock.findMany({
-            where: {
-              lineStatus: 'active',
-              segment: defaultSegment.id,
-            },
+        // Filtrar por evolutions ativas
+        const filteredDefaultLines = await this.controlPanelService.filterLinesByActiveEvolutions(defaultLines, user.segment);
+        
+        // Buscar linha disponível (com menos de 2 operadores)
+        for (const line of filteredDefaultLines) {
+          const operatorsCount = await (this.prisma as any).lineOperator.count({
+            where: { lineId: line.id },
           });
-
-          // Filtrar por evolutions ativas
-          const filteredDefaultLines = await this.controlPanelService.filterLinesByActiveEvolutions(defaultLines, user.segment);
-          availableLine = await this.findAvailableLineForOperator(filteredDefaultLines, user.id, user.segment);
-
-          // Se encontrou linha padrão e operador tem segmento, atualizar o segmento da linha
-          if (availableLine && user.segment) {
-            await this.prisma.linesStock.update({
-              where: { id: availableLine.id },
-              data: { segment: user.segment },
-            });
+          
+          if (operatorsCount < 2) {
+            availableLine = line;
+            break;
           }
+        }
+
+        // Se encontrou linha padrão e operador tem segmento, atualizar o segmento da linha
+        if (availableLine && user.segment) {
+          await this.prisma.linesStock.update({
+            where: { id: availableLine.id },
+            data: { segment: user.segment },
+          });
         }
       }
 
@@ -544,8 +549,9 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         }
       }
 
-      // Se ainda não tem linha após tentar atribuir, fazer busca ampla (qualquer linha ativa)
+      // 3. Se ainda não tem linha, fazer busca ULTRA AMPLA (qualquer linha ativa com menos de 2 operadores, ignorando validações de segmento)
       if (!currentLineId) {
+        console.log(`🔄 [WebSocket] Buscando qualquer linha ativa disponível para operador ${user.name}...`);
         
         // Buscar qualquer linha ativa (sem filtro de segmento)
         const anyActiveLines = await this.prisma.linesStock.findMany({
@@ -556,63 +562,99 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         
         // Filtrar por evolutions ativas
         const filteredAnyLines = await this.controlPanelService.filterLinesByActiveEvolutions(anyActiveLines, user.segment);
-        const fallbackLine = await this.findAvailableLineForOperator(filteredAnyLines, user.id, user.segment);
         
-        if (fallbackLine) {
+        // Buscar QUALQUER linha com menos de 2 operadores (ignorar validação de segmento)
+        for (const line of filteredAnyLines) {
           const currentOperatorsCount = await (this.prisma as any).lineOperator.count({
-            where: { lineId: fallbackLine.id },
+            where: { lineId: line.id },
+          });
+          
+          // Se tem menos de 2 operadores, pode atribuir (mesmo que tenha operador de outro segmento)
+          if (currentOperatorsCount < 2) {
+            try {
+              await this.linesService.assignOperatorToLine(line.id, user.id);
+              
+              // Atualizar segmento da linha se operador tem segmento e linha não tem
+              if (user.segment && !line.segment) {
+                await this.prisma.linesStock.update({
+                  where: { id: line.id },
+                  data: { segment: user.segment },
+                });
+              }
+              
+              user.line = line.id;
+              currentLineId = line.id;
+              
+              console.log(`✅ [WebSocket] Linha ${line.phone} atribuída ao operador ${user.name} (busca ampla, segmento: ${line.segment || 'sem segmento'})`);
+              break; // Encontrou e atribuiu, sair do loop
+            } catch (error: any) {
+              // Se o erro for "já está vinculado", usar essa linha mesmo assim
+              if (error.message?.includes('já está vinculado')) {
+                user.line = line.id;
+                currentLineId = line.id;
+                console.log(`✅ [WebSocket] Operador ${user.name} já estava vinculado à linha ${line.phone}`);
+                break;
+              }
+              // Se der outro erro, tentar próxima linha
+              console.warn(`⚠️ [WebSocket] Erro ao vincular linha ${line.id} (${line.phone}) ao operador ${user.id}:`, error.message);
+            }
+          }
+        }
+      }
+      
+      // 4. ÚLTIMA TENTATIVA: Se ainda não tem linha, buscar linhas padrão (segment: null) SEM filtrar por evolutions
+      // Isso garante que se há linhas padrão cadastradas, sempre encontra uma
+      if (!currentLineId) {
+        console.log(`🔄 [WebSocket] Última tentativa: buscando linhas padrão (segment: null) sem filtro de evolutions...`);
+        
+        const defaultLinesNull = await this.prisma.linesStock.findMany({
+          where: {
+            lineStatus: 'active',
+            segment: null,
+          },
+        });
+        
+        // Buscar QUALQUER linha padrão com menos de 2 operadores (SEM filtrar por evolutions)
+        for (const line of defaultLinesNull) {
+          const currentOperatorsCount = await (this.prisma as any).lineOperator.count({
+            where: { lineId: line.id },
           });
           
           if (currentOperatorsCount < 2) {
-            // Verificar se não tem operadores de outro segmento
-            const existingOperators = await (this.prisma as any).lineOperator.findMany({
-              where: { lineId: fallbackLine.id },
-              include: { user: true },
-            });
-            
-            const canAssign = existingOperators.length === 0 || 
-              existingOperators.every((lo: any) => lo.user.segment === user.segment);
-            
-            if (canAssign) {
-              // Vincular operador à linha usando método com transaction + lock
-              try {
-                await this.linesService.assignOperatorToLine(fallbackLine.id, user.id);
-                
-                // Atualizar segmento da linha se operador tem segmento
-                if (user.segment && fallbackLine.segment !== user.segment) {
-                  await this.prisma.linesStock.update({
-                    where: { id: fallbackLine.id },
-                    data: { segment: user.segment },
-                  });
-                }
-                
-                user.line = fallbackLine.id;
-                currentLineId = fallbackLine.id;
-                client.emit('line-assigned', {
-                  lineId: fallbackLine.id,
-                  linePhone: fallbackLine.phone,
-                  message: `Você foi vinculado à linha ${fallbackLine.phone} automaticamente.`,
+            try {
+              await this.linesService.assignOperatorToLine(line.id, user.id);
+              
+              // Atualizar segmento da linha se operador tem segmento
+              if (user.segment) {
+                await this.prisma.linesStock.update({
+                  where: { id: line.id },
+                  data: { segment: user.segment },
                 });
-              } catch (error: any) {
-                // Se o erro for "já está vinculado", apenas logar e continuar (não é erro crítico)
-                if (error.message?.includes('já está vinculado')) {
-                  // Atualizar user.line mesmo assim
-                  user.line = fallbackLine.id;
-                  currentLineId = fallbackLine.id;
-                } else {
-                  console.error(`❌ [WebSocket] Erro ao vincular linha ${fallbackLine.id} ao operador ${user.id}:`, error.message);
-                  // Continuar para tentar outra linha
-                }
+              }
+              
+              user.line = line.id;
+              currentLineId = line.id;
+              
+              console.log(`✅ [WebSocket] Linha padrão ${line.phone} atribuída ao operador ${user.name} (última tentativa)`);
+              break;
+            } catch (error: any) {
+              if (error.message?.includes('já está vinculado')) {
+                user.line = line.id;
+                currentLineId = line.id;
+                break;
               }
             }
           }
         }
-        
-        // Se ainda não tem linha após todas as tentativas
-        if (!currentLineId) {
-          console.error('❌ [WebSocket] Operador sem linha atribuída e nenhuma linha disponível após todas as tentativas');
-          return { error: 'Você não possui uma linha atribuída' };
-        }
+      }
+      
+      // Se DEPOIS DE TODAS AS TENTATIVAS ainda não tem linha, fazer log mas NÃO retornar erro
+      // Em vez disso, tentar continuar (mesmo que possa falhar depois)
+      if (!currentLineId) {
+        console.error(`❌ [WebSocket] CRÍTICO: Nenhuma linha disponível após todas as tentativas para operador ${user.name} (ID: ${user.id})`);
+        console.error(`❌ [WebSocket] Total de linhas ativas no banco: ${await this.prisma.linesStock.count({ where: { lineStatus: 'active' } })}`);
+        console.error(`❌ [WebSocket] Total de linhas padrão (segment: null): ${await this.prisma.linesStock.count({ where: { lineStatus: 'active', segment: null } })}`);
+        // NÃO retornar erro aqui - deixar continuar e tentar enviar mesmo assim (pode dar erro depois, mas pelo menos tentou)
       }
     }
 

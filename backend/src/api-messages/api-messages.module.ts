@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ApiMessagesService } from './api-messages.service';
 import { ApiMessagesController } from './api-messages.controller';
 import { PrismaService } from '../prisma.service';
@@ -12,6 +12,8 @@ import { SpintaxModule } from '../spintax/spintax.module';
 import { HealthCheckCacheModule } from '../health-check-cache/health-check-cache.module';
 import { LineReputationModule } from '../line-reputation/line-reputation.module';
 import { PhoneValidationModule } from '../phone-validation/phone-validation.module';
+import { LinesModule } from '../lines/lines.module';
+import { ControlPanelModule } from '../control-panel/control-panel.module';
 
 @Module({
   imports: [
@@ -25,6 +27,8 @@ import { PhoneValidationModule } from '../phone-validation/phone-validation.modu
     HealthCheckCacheModule,
     LineReputationModule,
     PhoneValidationModule,
+    forwardRef(() => LinesModule),
+    ControlPanelModule,
   ],
   controllers: [ApiMessagesController],
   providers: [ApiMessagesService, PrismaService],

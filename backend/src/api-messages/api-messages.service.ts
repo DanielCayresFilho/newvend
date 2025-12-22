@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { MassiveCpcDto, MessageDto, SendTemplateExternalDto, TemplateVariableDto } from './dto/massive-cpc.dto';
 import { TagsService } from '../tags/tags.service';
@@ -11,6 +11,8 @@ import { SpintaxService } from '../spintax/spintax.service';
 import { HealthCheckCacheService } from '../health-check-cache/health-check-cache.service';
 import { LineReputationService } from '../line-reputation/line-reputation.service';
 import { PhoneValidationService } from '../phone-validation/phone-validation.service';
+import { LinesService } from '../lines/lines.service';
+import { ControlPanelService } from '../control-panel/control-panel.service';
 import axios from 'axios';
 
 @Injectable()
@@ -27,6 +29,9 @@ export class ApiMessagesService {
     private healthCheckCacheService: HealthCheckCacheService,
     private lineReputationService: LineReputationService,
     private phoneValidationService: PhoneValidationService,
+    @Inject(forwardRef(() => LinesService))
+    private linesService: LinesService,
+    private controlPanelService: ControlPanelService,
   ) {}
 
   /**
@@ -83,6 +88,7 @@ export class ApiMessagesService {
 
   /**
    * Busca operador pelo specialistCode (email antes do @)
+   * Não lança exceção se não tiver linha - isso será tratado pelo chamador
    */
   private async findOperatorBySpecialistCode(specialistCode: string) {
     // Buscar usuário cujo email começa com specialistCode@
@@ -93,17 +99,138 @@ export class ApiMessagesService {
         },
         role: 'operator',
       },
+      include: {
+        lineOperators: {
+          select: {
+            lineId: true,
+          },
+        },
+      },
     });
 
     if (!user) {
       throw new NotFoundException(`Operador com specialistCode '${specialistCode}' não encontrado`);
     }
 
-    if (!user.line) {
-      throw new BadRequestException(`Operador '${specialistCode}' não possui linha atribuída`);
+    // Buscar linha do operador (pode estar na tabela LineOperator ou no campo legacy)
+    let currentLineId = user.line;
+    if (!currentLineId && user.lineOperators && user.lineOperators.length > 0) {
+      currentLineId = user.lineOperators[0].lineId;
     }
 
-    return user;
+    return {
+      ...user,
+      line: currentLineId,
+    };
+  }
+
+  /**
+   * Atribui automaticamente uma linha ao operador se ele não tiver uma
+   */
+  private async ensureOperatorHasLine(operator: any): Promise<number> {
+    // Se já tem linha, verificar se está ativa
+    if (operator.line) {
+      const line = await this.prisma.linesStock.findUnique({
+        where: { id: operator.line },
+      });
+      if (line && line.lineStatus === 'active') {
+        return operator.line;
+      }
+    }
+
+    // Buscar linha disponível do segmento do operador
+    let availableLine = null;
+
+    // 1. Primeiro, tentar buscar linha do mesmo segmento do operador
+    if (operator.segment) {
+      const segmentLines = await this.prisma.linesStock.findMany({
+        where: {
+          lineStatus: 'active',
+          segment: operator.segment,
+        },
+      });
+
+      // Filtrar por evolutions ativas
+      const filteredLines = await this.controlPanelService.filterLinesByActiveEvolutions(segmentLines, operator.segment);
+
+      // Para cada linha, verificar quantos operadores estão vinculados
+      for (const line of filteredLines) {
+        const operatorsCount = await (this.prisma as any).lineOperator.count({
+          where: { lineId: line.id },
+        });
+
+        if (operatorsCount >= 2) continue;
+
+        // Se tem operadores, verificar se são do mesmo segmento
+        if (operatorsCount > 0) {
+          const lineOperators = await (this.prisma as any).lineOperator.findMany({
+            where: { lineId: line.id },
+            include: {
+              user: {
+                select: {
+                  segment: true,
+                },
+              },
+            },
+          });
+
+          const allSameSegment = lineOperators.every((lo: any) => lo.user?.segment === operator.segment);
+          if (!allSameSegment) continue;
+        }
+
+        availableLine = line;
+        break;
+      }
+    }
+
+    // 2. Se não encontrou linha do segmento, buscar linha sem segmento (padrão)
+    if (!availableLine) {
+      const defaultLines = await this.prisma.linesStock.findMany({
+        where: {
+          lineStatus: 'active',
+          segment: null, // Linhas sem segmento (padrão)
+        },
+      });
+
+      // Filtrar por evolutions ativas
+      const filteredDefaultLines = await this.controlPanelService.filterLinesByActiveEvolutions(defaultLines, operator.segment || undefined);
+
+      // Para cada linha, verificar se tem menos de 2 operadores
+      for (const line of filteredDefaultLines) {
+        const operatorsCount = await (this.prisma as any).lineOperator.count({
+          where: { lineId: line.id },
+        });
+
+        if (operatorsCount < 2) {
+          availableLine = line;
+          break;
+        }
+      }
+    }
+
+    if (!availableLine) {
+      throw new BadRequestException(`Nenhuma linha disponível para atribuir ao operador '${operator.email}'`);
+    }
+
+    // Atribuir linha ao operador usando método com transaction + lock
+    try {
+      await this.linesService.assignOperatorToLine(availableLine.id, operator.id);
+      console.log(`✅ [ApiMessages] Linha ${availableLine.phone} atribuída automaticamente ao operador ${operator.email}`);
+      
+      // Se encontrou linha padrão e operador tem segmento, atualizar o segmento da linha
+      if (availableLine.segment === null && operator.segment) {
+        await this.prisma.linesStock.update({
+          where: { id: availableLine.id },
+          data: { segment: operator.segment },
+        });
+        console.log(`🔄 [ApiMessages] Segmento da linha ${availableLine.phone} atualizado para ${operator.segment}`);
+      }
+
+      return availableLine.id;
+    } catch (error) {
+      console.error(`❌ [ApiMessages] Erro ao atribuir linha ao operador ${operator.email}:`, error);
+      throw new BadRequestException(`Erro ao atribuir linha ao operador: ${error.message}`);
+    }
   }
 
   /**
@@ -202,9 +329,25 @@ export class ApiMessagesService {
         // Buscar operador
         const operator = await this.findOperatorBySpecialistCode(message.specialistCode);
 
+        // Se operador não tem linha, atribuir automaticamente
+        let operatorLineId = operator.line;
+        if (!operatorLineId) {
+          try {
+            operatorLineId = await this.ensureOperatorHasLine(operator);
+            // Atualizar operator.line para uso posterior
+            operator.line = operatorLineId;
+          } catch (lineError: any) {
+            errors.push({
+              phone: message.phone,
+              reason: lineError.message || 'Não foi possível atribuir linha ao operador',
+            });
+            continue;
+          }
+        }
+
         // Buscar linha do operador
         const line = await this.prisma.linesStock.findUnique({
-          where: { id: operator.line! },
+          where: { id: operatorLineId },
         });
 
         if (!line || line.lineStatus !== 'active') {
@@ -409,7 +552,7 @@ export class ApiMessagesService {
           contactPhone: message.phone,
           segment: tag.segment || operator.segment || null,
           userName: operator.name,
-          userLine: operator.line!,
+          userLine: operatorLineId,
           message: useTemplate ? `[TEMPLATE] ${finalMessage}` : finalMessage,
           sender: 'operator',
           messageType: useTemplate ? 'template' : 'text',
@@ -581,9 +724,17 @@ export class ApiMessagesService {
       // Buscar operador
       const operator = await this.findOperatorBySpecialistCode(dto.specialistCode);
 
+      // Se operador não tem linha, atribuir automaticamente
+      let operatorLineId = operator.line;
+      if (!operatorLineId) {
+        operatorLineId = await this.ensureOperatorHasLine(operator);
+        // Atualizar operator.line para uso posterior
+        operator.line = operatorLineId;
+      }
+
       // Buscar linha do operador
       const line = await this.prisma.linesStock.findUnique({
-        where: { id: operator.line! },
+        where: { id: operatorLineId },
       });
 
       if (!line || line.lineStatus !== 'active') {
@@ -699,7 +850,7 @@ export class ApiMessagesService {
         contactPhone: dto.phone,
         segment: contact.segment,
         userName: operator.name,
-        userLine: operator.line!,
+        userLine: operatorLineId,
         message: `[TEMPLATE: ${template.name}] ${templateText}`,
         sender: 'operator',
         messageType: 'template',
