@@ -36,6 +36,8 @@ import { systemEventsService, SystemEvent, usersService, User } from "@/services
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { useAuth } from "@/contexts/AuthContext";
+import { useNavigate } from "react-router-dom";
 
 // Cores para os gráficos
 const COLORS = {
@@ -80,6 +82,21 @@ const SeverityBadge = ({ severity }: { severity: string }) => {
 };
 
 export default function Acompanhamento() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  
+  // Verificar se é admin
+  useEffect(() => {
+    if (user && user.role !== 'admin') {
+      toast({
+        title: "Acesso negado",
+        description: "Esta página é restrita apenas para administradores",
+        variant: "destructive",
+      });
+      navigate('/');
+    }
+  }, [user, navigate]);
+  
   const [events, setEvents] = useState<SystemEvent[]>([]);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);

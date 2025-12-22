@@ -48,7 +48,7 @@ const menuItems: MenuItem[] = [
   { title: "Blocklist", url: "/blocklist", icon: Ban, color: "text-muted-foreground", roles: ['supervisor', 'admin'] },
   { title: "Templates", url: "/templates", icon: FileText, color: "text-primary", roles: ['supervisor', 'admin'] },
   { title: "Relatórios", url: "/relatorios", icon: BarChart3, color: "text-success", roles: ['supervisor', 'admin'] },
-  { title: "Acompanhamento", url: "/acompanhamento", icon: Activity, color: "text-primary", roles: ['supervisor', 'admin'] },
+  { title: "Acompanhamento", url: "/acompanhamento", icon: Activity, color: "text-primary", roles: ['admin'] },
   { title: "Produtividade Ativadores", url: "/produtividade-ativadores", icon: TrendingUp, color: "text-success", roles: ['admin'] },
   { title: "Painel Controle", url: "/painel-controle", icon: Sliders, color: "text-purple-500", roles: ['admin'] },
   { title: "Evolution", url: "/evolution", icon: RefreshCw, color: "text-primary", roles: ['admin'] },

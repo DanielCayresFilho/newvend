@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Send, FileText, MessageCircle, ArrowRight, ArrowLeft, Loader2, Wifi, WifiOff, Edit, UserCheck, X, Check, Phone, AlertTriangle, RefreshCw, Search } from "lucide-react";
+import { Plus, Send, FileText, MessageCircle, ArrowRight, ArrowLeft, Loader2, Wifi, WifiOff, Edit, UserCheck, X, Check, Phone, AlertTriangle, RefreshCw, Search, Download } from "lucide-react";
 import { GlassCard } from "@/components/ui/glass-card";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -1043,16 +1043,20 @@ export default function Atendimento() {
                       </div>
                     )}
 
-                    {/* Input de Mensagem (só aparece se não estiver usando template) */}
+                    {/* Input de Mensagem - SEMPRE desabilitado para primeira mensagem (deve ser template) */}
                     {!selectedTemplate && (
                       <div className="space-y-2">
-                        <Label htmlFor="message">Mensagem *</Label>
+                        <Label htmlFor="message">Mensagem</Label>
                         <Input 
                           id="message" 
-                          placeholder="Digite a mensagem que deseja enviar..."
+                          placeholder="Selecione um template para enviar a primeira mensagem"
                           value={newContactMessage}
                           onChange={(e) => setNewContactMessage(e.target.value)}
+                          disabled={true}
                         />
+                        <p className="text-xs text-muted-foreground">
+                          A primeira mensagem deve ser enviada através de um template
+                        </p>
                       </div>
                     )}
                   </div>
@@ -1064,8 +1068,8 @@ export default function Atendimento() {
                     }}>
                       Cancelar
                     </Button>
-                    <Button onClick={handleNewConversation} disabled={!selectedTemplate && !newContactMessage.trim()}>
-                      {selectedTemplate ? 'Enviar Template' : 'Enviar Mensagem'}
+                    <Button onClick={handleNewConversation} disabled={!selectedTemplate}>
+                      {selectedTemplate ? 'Enviar Template' : 'Selecione um Template'}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
@@ -1192,12 +1196,64 @@ export default function Atendimento() {
                     </Tooltip>
                   </TooltipProvider>
                 </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm">
-                      Tabular
-                    </Button>
-                  </DropdownMenuTrigger>
+                <div className="flex items-center gap-2">
+                  {user?.role === 'admin' && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={async () => {
+                              if (!selectedConversation) return;
+                              try {
+                                const messages = selectedConversation.messages || [];
+                                const conversationText = messages.map(msg => {
+                                  const date = format(new Date(msg.datetime), 'dd/MM/yyyy HH:mm:ss');
+                                  const sender = msg.sender === 'operator' ? 'Operador' : 'Cliente';
+                                  return `[${date}] ${sender}: ${msg.message || '(mídia)'}`;
+                                }).join('\n\n');
+                                
+                                const fullText = `Conversa com ${selectedConversation.contactName} (${selectedConversation.contactPhone})\n\n${conversationText}`;
+                                
+                                // Criar blob e download
+                                const blob = new Blob([fullText], { type: 'text/plain' });
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = `conversa-${selectedConversation.contactPhone}-${format(new Date(), 'yyyy-MM-dd')}.txt`;
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                                URL.revokeObjectURL(url);
+                                
+                                toast({
+                                  title: "Download iniciado",
+                                  description: "Conversa baixada com sucesso",
+                                });
+                              } catch (error) {
+                                toast({
+                                  title: "Erro ao baixar",
+                                  description: error instanceof Error ? error.message : "Erro ao baixar conversa",
+                                  variant: "destructive",
+                                });
+                              }
+                            }}
+                          >
+                            <Download className="h-4 w-4 mr-2" />
+                            Baixar PDF
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Baixar conversa em PDF</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        Tabular
+                      </Button>
+                    </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-64">
                     <div className="p-2 border-b" onClick={(e) => e.stopPropagation()}>
                       <div className="relative">

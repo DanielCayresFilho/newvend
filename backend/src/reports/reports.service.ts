@@ -1182,7 +1182,7 @@ export class ReportsService {
 
   /**
    * RELATÓRIO DE LINHAS
-   * Estrutura: id, Número, Status, Segmento, Operador Vinculado, Data de Criação
+   * Estrutura: id, Número, Status, Segmento, Operador Vinculado, Data de Transferência
    */
   async getLinhasReport(filters: ReportFilterDto) {
     const whereClause: any = {};
@@ -1208,23 +1208,7 @@ export class ReportsService {
       }
     }
 
-    // Filtro de data: apenas pela Data de Transferência (createdAt)
-    if (filters.startDate || filters.endDate) {
-      whereClause.createdAt = {};
-      
-      if (filters.startDate) {
-        const startDate = new Date(filters.startDate);
-        startDate.setHours(0, 0, 0, 0);
-        whereClause.createdAt.gte = startDate;
-      }
-      
-      if (filters.endDate) {
-        const endDate = new Date(filters.endDate);
-        endDate.setHours(23, 59, 59, 999);
-        whereClause.createdAt.lte = endDate;
-      }
-    }
-
+    // Buscar todas as linhas com filtros de segmento
     const lines = await this.prisma.linesStock.findMany({
       where: whereClause,
       orderBy: { createdAt: 'desc' },
@@ -1233,17 +1217,34 @@ export class ReportsService {
     const segments = await this.prisma.segment.findMany();
     const segmentMap = new Map(segments.map(s => [s.id, s]));
 
-    // Buscar todos os operadores vinculados via LineOperator
+    // Buscar todos os operadores vinculados via LineOperator (primeira atribuição)
     const lineIds = lines.map(l => l.id);
-    const lineOperators = await (this.prisma as any).lineOperator.findMany({
-      where: {
-        lineId: { in: lineIds },
-        user: {
-          email: {
-            endsWith: '@paschoalotto.com.br',
-          },
+    const lineOperatorsQuery: any = {
+      lineId: { in: lineIds },
+      user: {
+        email: {
+          endsWith: '@paschoalotto.com.br',
         },
       },
+    };
+
+    // Se houver filtro de data, filtrar pela primeira atribuição (createdAt do LineOperator)
+    if (filters.startDate || filters.endDate) {
+      lineOperatorsQuery.createdAt = {};
+      if (filters.startDate) {
+        const startDate = new Date(filters.startDate);
+        startDate.setHours(0, 0, 0, 0);
+        lineOperatorsQuery.createdAt.gte = startDate;
+      }
+      if (filters.endDate) {
+        const endDate = new Date(filters.endDate);
+        endDate.setHours(23, 59, 59, 999);
+        lineOperatorsQuery.createdAt.lte = endDate;
+      }
+    }
+
+    const lineOperators = await (this.prisma as any).lineOperator.findMany({
+      where: lineOperatorsQuery,
       include: {
         user: {
           select: {
@@ -1258,8 +1259,10 @@ export class ReportsService {
       },
     });
 
-    // Agrupar operadores por linha
+    // Agrupar operadores por linha e pegar a primeira data de atribuição
     const operatorsByLine = new Map<number, Array<{ user: any; createdAt: Date }>>();
+    const firstTransferDateByLine = new Map<number, Date>();
+    
     lineOperators.forEach((lo: any) => {
       if (!operatorsByLine.has(lo.lineId)) {
         operatorsByLine.set(lo.lineId, []);
@@ -1268,16 +1271,30 @@ export class ReportsService {
         user: lo.user,
         createdAt: lo.createdAt,
       });
+      
+      // Guardar a primeira data de transferência (atribuição mais antiga)
+      if (!firstTransferDateByLine.has(lo.lineId) || 
+          lo.createdAt < firstTransferDateByLine.get(lo.lineId)!) {
+        firstTransferDateByLine.set(lo.lineId, lo.createdAt);
+      }
     });
 
-    const result = lines.map(line => {
+    // Filtrar linhas: se houver filtro de data, só incluir linhas que têm transferência no período
+    let filteredLines = lines;
+    if (filters.startDate || filters.endDate) {
+      filteredLines = lines.filter(line => firstTransferDateByLine.has(line.id));
+    }
+
+    const result = filteredLines.map(line => {
       const segment = line.segment ? segmentMap.get(line.segment) : null;
+      // Usar a primeira data de transferência, ou createdAt da linha se não houver transferência
+      const transferDate = firstTransferDateByLine.get(line.id) || line.createdAt;
 
       return {
         Carteira: this.normalizeText(segment?.name) || 'Sem segmento',
         Número: line.phone,
         Blindado: line.lineStatus === 'ban' ? 'Sim' : line.lineStatus === 'active' ? 'Não' : 'Desconhecido',
-        'Data de Transferencia': this.formatDateTime(line.createdAt),
+        'Data de Transferencia': this.formatDateTime(transferDate),
       };
     });
 

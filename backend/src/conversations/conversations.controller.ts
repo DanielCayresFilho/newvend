@@ -27,7 +27,7 @@ export class ConversationsController {
   }
 
   @Get()
-  @Roles(Role.admin, Role.supervisor, Role.operator)
+  @Roles(Role.admin, Role.supervisor, Role.operator, Role.digital)
   findAll(@Query() filters: any, @CurrentUser() user: any) {
     const where: any = { ...filters };
 
@@ -40,18 +40,18 @@ export class ConversationsController {
       // Supervisor só vê conversas do seu segmento
       where.segment = user.segment;
     }
-    // Admin não tem filtro - vê todas as conversas
+    // Admin e digital não têm filtro - veem todas as conversas
 
     return this.conversationsService.findAll(where);
   }
 
   @Get('active')
-  @Roles(Role.admin, Role.supervisor, Role.operator)
+  @Roles(Role.admin, Role.supervisor, Role.operator, Role.digital)
   getActiveConversations(@CurrentUser() user: any) {
     console.log(`📋 [GET /conversations/active] Usuário: ${user.name} (${user.role}), line: ${user.line}, segment: ${user.segment}`);
     
-    // Admin vê TODAS as conversas ativas (sem filtro)
-    if (user.role === Role.admin) {
+    // Admin e digital veem TODAS as conversas ativas (sem filtro)
+    if (user.role === Role.admin || user.role === Role.digital) {
       return this.conversationsService.findAll({ tabulation: null });
     }
     // Supervisor vê apenas conversas ativas do seu segmento
@@ -64,12 +64,12 @@ export class ConversationsController {
   }
 
   @Get('tabulated')
-  @Roles(Role.admin, Role.supervisor, Role.operator)
+  @Roles(Role.admin, Role.supervisor, Role.operator, Role.digital)
   getTabulatedConversations(@CurrentUser() user: any) {
     console.log(`📋 [GET /conversations/tabulated] Usuário: ${user.name} (${user.role}), line: ${user.line}, segment: ${user.segment}`);
     
-    // Admin vê TODAS as conversas tabuladas (sem filtro)
-    if (user.role === Role.admin) {
+    // Admin e digital veem TODAS as conversas tabuladas (sem filtro)
+    if (user.role === Role.admin || user.role === Role.digital) {
       return this.conversationsService.findAll({ tabulation: { not: null } });
     }
     // Supervisor vê apenas conversas tabuladas do seu segmento
@@ -82,7 +82,7 @@ export class ConversationsController {
   }
 
   @Get('segment/:segment')
-  @Roles(Role.supervisor, Role.admin)
+  @Roles(Role.supervisor, Role.admin, Role.digital)
   getBySegment(
     @Param('segment') segment: string,
     @Query('tabulated') tabulated?: string,
@@ -94,7 +94,7 @@ export class ConversationsController {
   }
 
   @Get('contact/:phone')
-  @Roles(Role.admin, Role.supervisor, Role.operator)
+  @Roles(Role.admin, Role.supervisor, Role.operator, Role.digital)
   getByContactPhone(
     @Param('phone') phone: string,
     @Query('tabulated') tabulated?: string,
@@ -117,13 +117,13 @@ export class ConversationsController {
   }
 
   @Get(':id')
-  @Roles(Role.admin, Role.supervisor, Role.operator)
+  @Roles(Role.admin, Role.supervisor, Role.operator, Role.digital)
   findOne(@Param('id') id: string) {
     return this.conversationsService.findOne(+id);
   }
 
   @Patch(':id')
-  @Roles(Role.admin, Role.supervisor, Role.operator)
+  @Roles(Role.admin, Role.supervisor, Role.operator, Role.digital)
   update(@Param('id') id: string, @Body() updateConversationDto: UpdateConversationDto) {
     return this.conversationsService.update(+id, updateConversationDto);
   }
