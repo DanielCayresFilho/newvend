@@ -20,10 +20,18 @@ export class MessageDto {
   @IsOptional()
   idMessage?: number;
 
+  @Transform(({ value }) => {
+    if (value === null || value === undefined || value === '') return undefined;
+    return value;
+  })
   @IsString()
   @IsOptional()
   clientId?: string;
 
+  @Transform(({ value }) => {
+    if (value === null || value === undefined || value === '') return undefined;
+    return value;
+  })
   @IsString()
   @IsOptional()
   contract?: string;
@@ -40,10 +48,18 @@ export class MessageDto {
   @IsNotEmpty()
   mainTemplate: string;
 
+  @Transform(({ value }) => {
+    if (value === null || value === undefined || value === '') return undefined;
+    return value;
+  })
   @IsString()
   @IsOptional()
   retryTemplate?: string;
 
+  @Transform(({ value }) => {
+    if (value === null || value === undefined || value === '') return undefined;
+    return value;
+  })
   @IsString()
   @IsOptional()
   lastTemplate?: string;
@@ -79,6 +95,10 @@ export class MassiveCpcDto {
   @IsNotEmpty()
   campaign: string;
 
+  @Transform(({ value }) => {
+    if (value === null || value === undefined || value === '') return undefined;
+    return value;
+  })
   @IsString()
   @IsOptional()
   idAccount?: string;

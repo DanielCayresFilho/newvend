@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Search, RotateCcw, Eye, Loader2, FileText, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, RotateCcw, Eye, Loader2, FileText, ChevronLeft, ChevronRight, Copy, Check } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { GlassCard } from "@/components/ui/glass-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -74,6 +75,7 @@ export default function LogsAPI() {
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [copiedText, setCopiedText] = useState<string | null>(null);
 
   const mapApiToLocal = (apiLog: ApiLog): LogEntry => {
     // Tentar formatar a data de forma segura
@@ -264,6 +266,20 @@ export default function LogsAPI() {
     );
   };
 
+  const copyToClipboard = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedText(label);
+      setTimeout(() => setCopiedText(null), 2000);
+      toast({
+        title: "Copiado!",
+        description: `${label} copiado para a área de transferência`,
+      });
+    } catch (error) {
+      console.error('Failed to copy:', error);
+    }
+  };
+
   return (
     <MainLayout>
       <div className="space-y-6 animate-fade-in">
@@ -317,9 +333,16 @@ export default function LogsAPI() {
 
         {/* Logs Table */}
         <GlassCard padding="none">
-          <div className="p-6 border-b border-border/50">
-            <h3 className="font-semibold text-foreground">Resultados</h3>
-            <p className="text-sm text-muted-foreground">{logs.length} registros encontrados</p>
+          <div className="p-4 md:p-6 border-b border-border/50 flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold text-foreground">Resultados</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                {logs.length} {logs.length === 1 ? 'registro encontrado' : 'registros encontrados'}
+              </p>
+            </div>
+            <Badge variant="outline" className="hidden sm:flex">
+              {paginatedLogs.length} nesta página
+            </Badge>
           </div>
           
           {isLoading ? (
@@ -338,34 +361,39 @@ export default function LogsAPI() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/30">
-                      <TableHead className="w-16">ID</TableHead>
-                      <TableHead>Endpoint</TableHead>
-                      <TableHead className="w-24">Método</TableHead>
+                      <TableHead className="w-20">ID</TableHead>
+                      <TableHead className="min-w-[200px]">Endpoint</TableHead>
+                      <TableHead className="w-28">Método</TableHead>
                       <TableHead className="w-24">Status</TableHead>
-                      <TableHead>IP</TableHead>
-                      <TableHead>Data</TableHead>
+                      <TableHead className="min-w-[120px]">IP</TableHead>
+                      <TableHead className="min-w-[160px]">Data/Hora</TableHead>
                       <TableHead className="w-20 text-right">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {paginatedLogs.map((log) => (
                       <TableRow key={log.id} className="hover:bg-muted/20 transition-colors">
-                        <TableCell className="font-mono text-sm">{log.id}</TableCell>
-                        <TableCell className="font-mono text-sm">{log.endpoint}</TableCell>
+                        <TableCell className="font-mono text-xs">{log.id}</TableCell>
+                        <TableCell className="font-mono text-xs break-all max-w-[300px] truncate" title={log.endpoint}>
+                          {log.endpoint}
+                        </TableCell>
                         <TableCell>
-                          <Badge className={methodColors[log.method]}>
+                          <Badge className={`${methodColors[log.method]} text-xs`}>
                             {log.method}
                           </Badge>
                         </TableCell>
                         <TableCell>{getStatusBadge(log.statusCode)}</TableCell>
-                        <TableCell className="font-mono text-sm">{log.ip}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{log.date}</TableCell>
+                        <TableCell className="font-mono text-xs">{log.ip}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                          {log.date}
+                        </TableCell>
                         <TableCell className="text-right">
                           <Button
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8"
                             onClick={() => handleViewDetails(log)}
+                            title="Ver detalhes"
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
@@ -445,76 +473,161 @@ export default function LogsAPI() {
 
       {/* Log Details Modal */}
       <Dialog open={!!selectedLog} onOpenChange={() => setSelectedLog(null)}>
-        <DialogContent className="sm:max-w-2xl max-h-[80vh]">
+        <DialogContent className="sm:max-w-5xl max-w-[95vw] max-h-[90vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>Detalhes do Log</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Detalhes do Log #{selectedLog?.id}
+            </DialogTitle>
           </DialogHeader>
           {selectedLog && (
-            <ScrollArea className="max-h-[60vh]">
+            <>
               {isLoadingDetails ? (
-                <div className="flex items-center justify-center py-8">
+                <div className="flex items-center justify-center py-16">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
               ) : (
-                <div className="space-y-6 py-4">
-                  {/* Basic Info */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-muted-foreground">ID</Label>
-                      <p className="font-mono">{selectedLog.id}</p>
-                    </div>
-                    <div>
-                      <Label className="text-muted-foreground">Data</Label>
-                      <p>{selectedLog.date}</p>
-                    </div>
-                    <div>
-                      <Label className="text-muted-foreground">Endpoint</Label>
-                      <p className="font-mono">{selectedLog.endpoint}</p>
-                    </div>
-                    <div>
-                      <Label className="text-muted-foreground">IP</Label>
-                      <p className="font-mono">{selectedLog.ip}</p>
-                    </div>
-                    <div>
-                      <Label className="text-muted-foreground">Método</Label>
-                      <Badge className={methodColors[selectedLog.method]}>{selectedLog.method}</Badge>
-                    </div>
-                    <div>
-                      <Label className="text-muted-foreground">Status</Label>
-                      {getStatusBadge(selectedLog.statusCode)}
-                    </div>
-                  </div>
+                <Tabs defaultValue="info" className="flex-1 flex flex-col min-h-0">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="info">Informações</TabsTrigger>
+                    <TabsTrigger value="request">Request Payload</TabsTrigger>
+                    <TabsTrigger value="response">Response Payload</TabsTrigger>
+                  </TabsList>
 
-                  {/* Request Payload */}
-                  {selectedLog.requestPayload && (
-                    <div className="space-y-2">
-                      <Label className="text-muted-foreground">Request Payload</Label>
-                      <pre className="bg-muted p-4 rounded-lg overflow-x-auto text-sm font-mono">
-                        {JSON.stringify(selectedLog.requestPayload, null, 2)}
-                      </pre>
-                    </div>
-                  )}
+                  <TabsContent value="info" className="flex-1 overflow-auto mt-4">
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <GlassCard className="p-4">
+                          <Label className="text-xs text-muted-foreground uppercase">ID</Label>
+                          <p className="font-mono text-sm mt-1">{selectedLog.id}</p>
+                        </GlassCard>
+                        <GlassCard className="p-4">
+                          <Label className="text-xs text-muted-foreground uppercase">Data/Hora</Label>
+                          <p className="text-sm mt-1">{selectedLog.date}</p>
+                        </GlassCard>
+                        <GlassCard className="p-4">
+                          <Label className="text-xs text-muted-foreground uppercase">Endpoint</Label>
+                          <p className="font-mono text-sm mt-1 break-all">{selectedLog.endpoint}</p>
+                        </GlassCard>
+                        <GlassCard className="p-4">
+                          <Label className="text-xs text-muted-foreground uppercase">IP Address</Label>
+                          <p className="font-mono text-sm mt-1">{selectedLog.ip}</p>
+                        </GlassCard>
+                        <GlassCard className="p-4">
+                          <Label className="text-xs text-muted-foreground uppercase">Método HTTP</Label>
+                          <div className="mt-1">
+                            <Badge className={methodColors[selectedLog.method]}>{selectedLog.method}</Badge>
+                          </div>
+                        </GlassCard>
+                        <GlassCard className="p-4">
+                          <Label className="text-xs text-muted-foreground uppercase">Status Code</Label>
+                          <div className="mt-1">
+                            {getStatusBadge(selectedLog.statusCode)}
+                          </div>
+                        </GlassCard>
+                      </div>
 
-                  {/* Response Payload */}
-                  {selectedLog.responsePayload && (
-                    <div className="space-y-2">
-                      <Label className="text-muted-foreground">Response Payload</Label>
-                      <pre className="bg-muted p-4 rounded-lg overflow-x-auto text-sm font-mono">
-                        {JSON.stringify(selectedLog.responsePayload, null, 2)}
-                      </pre>
+                      {selectedLog.userAgent && (
+                        <GlassCard className="p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <Label className="text-xs text-muted-foreground uppercase">User Agent</Label>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-2"
+                              onClick={() => copyToClipboard(selectedLog.userAgent || '', 'User Agent')}
+                            >
+                              {copiedText === 'User Agent' ? (
+                                <Check className="h-3 w-3" />
+                              ) : (
+                                <Copy className="h-3 w-3" />
+                              )}
+                            </Button>
+                          </div>
+                          <p className="text-sm text-muted-foreground break-all font-mono">{selectedLog.userAgent}</p>
+                        </GlassCard>
+                      )}
                     </div>
-                  )}
+                  </TabsContent>
 
-                  {/* User Agent */}
-                  {selectedLog.userAgent && (
-                    <div className="space-y-2">
-                      <Label className="text-muted-foreground">User Agent</Label>
-                      <p className="text-sm text-muted-foreground break-all">{selectedLog.userAgent}</p>
+                  <TabsContent value="request" className="flex-1 flex flex-col min-h-0 mt-4">
+                    <div className="flex-1 flex flex-col min-h-0">
+                      <div className="flex items-center justify-between mb-2">
+                        <Label className="text-sm font-semibold">Request Payload</Label>
+                        {selectedLog.requestPayload && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => copyToClipboard(JSON.stringify(selectedLog.requestPayload, null, 2), 'Request Payload')}
+                          >
+                            {copiedText === 'Request Payload' ? (
+                              <>
+                                <Check className="h-4 w-4 mr-2" />
+                                Copiado
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="h-4 w-4 mr-2" />
+                                Copiar JSON
+                              </>
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                      {selectedLog.requestPayload ? (
+                        <ScrollArea className="flex-1 border rounded-lg bg-muted/30">
+                          <pre className="p-4 text-sm font-mono whitespace-pre-wrap break-words">
+                            {JSON.stringify(selectedLog.requestPayload, null, 2)}
+                          </pre>
+                        </ScrollArea>
+                      ) : (
+                        <div className="flex-1 flex items-center justify-center border rounded-lg bg-muted/30">
+                          <p className="text-muted-foreground">Nenhum payload de request disponível</p>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  </TabsContent>
+
+                  <TabsContent value="response" className="flex-1 flex flex-col min-h-0 mt-4">
+                    <div className="flex-1 flex flex-col min-h-0">
+                      <div className="flex items-center justify-between mb-2">
+                        <Label className="text-sm font-semibold">Response Payload</Label>
+                        {selectedLog.responsePayload && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => copyToClipboard(JSON.stringify(selectedLog.responsePayload, null, 2), 'Response Payload')}
+                          >
+                            {copiedText === 'Response Payload' ? (
+                              <>
+                                <Check className="h-4 w-4 mr-2" />
+                                Copiado
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="h-4 w-4 mr-2" />
+                                Copiar JSON
+                              </>
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                      {selectedLog.responsePayload ? (
+                        <ScrollArea className="flex-1 border rounded-lg bg-muted/30">
+                          <pre className="p-4 text-sm font-mono whitespace-pre-wrap break-words">
+                            {JSON.stringify(selectedLog.responsePayload, null, 2)}
+                          </pre>
+                        </ScrollArea>
+                      ) : (
+                        <div className="flex-1 flex items-center justify-center border rounded-lg bg-muted/30">
+                          <p className="text-muted-foreground">Nenhum payload de response disponível</p>
+                        </div>
+                      )}
+                    </div>
+                  </TabsContent>
+                </Tabs>
               )}
-            </ScrollArea>
+            </>
           )}
         </DialogContent>
       </Dialog>
