@@ -30,13 +30,21 @@ export class AuthService {
   }
 
   async login(user: any) {
-    // Se o usuário for operator, atualizar status para Online
+    // Atualizar dados do login: status para Online (operadores)
+    // Para todos os usuários, fazer um update mínimo para garantir que updatedAt seja atualizado
+    const updateData: any = {};
     if (user.role === 'operator') {
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: { status: 'Online' },
-      });
+      updateData.status = 'Online';
+    } else {
+      // Para não-operadores, fazer um update que não muda nada mas garante updatedAt seja atualizado
+      // Atualizar o name com o mesmo valor força o Prisma a atualizar updatedAt
+      updateData.name = user.name;
     }
+    
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: updateData,
+    });
 
     const payload = { email: user.email, sub: user.id, role: user.role };
     return {

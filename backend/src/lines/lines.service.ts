@@ -1060,6 +1060,7 @@ export class LinesService {
         bannedLines,
         linesByMonth,
         createdAt: activator.createdAt,
+        updatedAt: activator.updatedAt, // Última atualização (pode indicar último login)
       };
     });
 

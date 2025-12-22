@@ -30,6 +30,7 @@ interface ActivatorProductivity {
   bannedLines: number;
   linesByMonth: Record<string, number>;
   createdAt: string;
+  updatedAt: string; // Última atualização (pode indicar último login)
 }
 
 interface AllocationStats {
@@ -219,41 +220,73 @@ export default function ProdutividadeAtivadores() {
                     <TableHead className="text-right">Total</TableHead>
                     <TableHead className="text-right">Ativas</TableHead>
                     <TableHead className="text-right">Banidas</TableHead>
+                    <TableHead className="text-right">Último Login</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {productivity.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground">
+                      <TableCell colSpan={5} className="text-center text-muted-foreground">
                         Nenhum ativador encontrado
                       </TableCell>
                     </TableRow>
                   ) : (
-                    productivity.map((activator) => (
-                      <TableRow
-                        key={activator.id}
-                        className={selectedActivator?.id === activator.id ? "bg-muted" : "cursor-pointer hover:bg-muted/50"}
-                        onClick={() => setSelectedActivator(activator)}
-                      >
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">{activator.name}</div>
-                            <div className="text-sm text-muted-foreground">{activator.email}</div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right font-bold">{activator.totalLines}</TableCell>
-                        <TableCell className="text-right">
-                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                            {activator.activeLines}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
-                            {activator.bannedLines}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))
+                    productivity.map((activator) => {
+                      const lastLoginDate = new Date(activator.updatedAt);
+                      const now = new Date();
+                      const diffMs = now.getTime() - lastLoginDate.getTime();
+                      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+                      const diffMinutes = Math.floor(diffMs / (1000 * 60));
+                      
+                      let lastLoginText = '';
+                      if (diffMinutes < 60) {
+                        lastLoginText = `${diffMinutes} min atrás`;
+                      } else if (diffHours < 24) {
+                        lastLoginText = `${diffHours}h atrás`;
+                      } else if (diffDays === 1) {
+                        lastLoginText = 'Ontem';
+                      } else if (diffDays < 7) {
+                        lastLoginText = `${diffDays} dias atrás`;
+                      } else {
+                        lastLoginText = lastLoginDate.toLocaleDateString('pt-BR', { 
+                          day: '2-digit', 
+                          month: '2-digit', 
+                          year: 'numeric' 
+                        });
+                      }
+
+                      return (
+                        <TableRow
+                          key={activator.id}
+                          className={selectedActivator?.id === activator.id ? "bg-muted" : "cursor-pointer hover:bg-muted/50"}
+                          onClick={() => setSelectedActivator(activator)}
+                        >
+                          <TableCell>
+                            <div>
+                              <div className="font-medium">{activator.name}</div>
+                              <div className="text-sm text-muted-foreground">{activator.email}</div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right font-bold">{activator.totalLines}</TableCell>
+                          <TableCell className="text-right">
+                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                              {activator.activeLines}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                              {activator.bannedLines}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="text-sm text-muted-foreground">
+                              {lastLoginText}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
                   )}
                 </TableBody>
               </Table>
