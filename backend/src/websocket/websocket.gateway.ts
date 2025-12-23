@@ -1060,11 +1060,15 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
             });
             
           } catch (urlError: any) {
-            // Tentativa 2: Base64 puro
+            // Tentativa 2: Base64 puro (apenas se base64File estiver disponível)
+            if (!base64File || typeof base64File !== 'string') {
+              throw new Error('Não foi possível converter o arquivo para base64. Arquivo não encontrado ou inválido.');
+            }
+            
             payload = {
               number: data.contactPhone.replace(/\D/g, ''),
               mediatype: 'document',
-              base64: base64File, // Base64 puro, sem prefixo
+              base64: String(base64File), // Base64 puro, sem prefixo - garantir que seja string
               fileName: cleanFileName,
             };
             
@@ -1088,11 +1092,15 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
               });
               
             } catch (base64Error: any) {
-              // Tentativa 3: Campo "media"
+              // Tentativa 3: Campo "media" (garantir que base64File seja string válida)
+              if (!base64File || typeof base64File !== 'string') {
+                throw new Error('Não foi possível converter o arquivo para base64. Arquivo não encontrado ou inválido.');
+              }
+              
               payload = {
                 number: data.contactPhone.replace(/\D/g, ''),
                 mediatype: 'document',
-                media: base64File, // Campo "media"
+                media: String(base64File), // Garantir que seja string
                 fileName: cleanFileName,
               };
               
