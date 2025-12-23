@@ -443,7 +443,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
   @SubscribeMessage('send-message')
   async handleSendMessage(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { contactPhone: string; message: string; messageType?: string; mediaUrl?: string; fileName?: string; isNewConversation?: boolean; templateId?: number; templateVariables?: TemplateVariableDto[] },
+    @MessageBody() data: { contactPhone: string; message: string; messageType?: string; mediaUrl?: string; fileName?: string; isNewConversation?: boolean; templateId?: number; templateVariables?: TemplateVariableDto[]; base64?: string; mediaBase64?: string },
   ) {
     const startTime = Date.now(); // Para métricas de latência
     const user = client.data.user;
@@ -945,98 +945,52 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         };
         
         try {
-          // Extrair nome do arquivo da URL
-          let filePath: string;
-          let useBase64 = true; // Por padrão, usar base64
+          // PRIORIDADE 1: Base64 do cliente (direto, sem ler do servidor)
+          let base64File: string | null = data.base64 || data.mediaBase64 || null;
           
-          if (data.mediaUrl.startsWith('/media/')) {
-            // URL relativa do nosso servidor - pegar arquivo diretamente
-            const filename = data.mediaUrl.replace('/media/', '');
-            filePath = await this.mediaService.getFilePath(filename);
-          } else if (data.mediaUrl.startsWith('http')) {
-            // URL completa - verificar se é do nosso servidor
-            const appUrl = process.env.APP_URL || 'https://api.newvend.taticamarketing.com.br';
-            if (data.mediaUrl.startsWith(appUrl)) {
-              // É do nosso servidor - extrair filename e pegar do storage
-              const urlPath = new URL(data.mediaUrl).pathname;
-              const filename = urlPath.replace('/media/', '');
-              filePath = await this.mediaService.getFilePath(filename);
-            } else {
-              // URL externa - usar a URL diretamente na Evolution API (não precisa baixar)
-              // A Evolution API aceita URLs externas diretamente
-              // Não definir filePath, vai usar a URL diretamente
-              filePath = null;
+          // Se não veio base64 do cliente E tem mediaUrl, tentar ler do servidor
+          let filePath: string | null = null;
+          if (!base64File && data.mediaUrl) {
+            if (data.mediaUrl.startsWith('/media/')) {
+              // URL relativa do nosso servidor
+              const filename = data.mediaUrl.replace('/media/', '');
+              try {
+                filePath = await this.mediaService.getFilePath(filename);
+              } catch {
+                console.warn(`⚠️ [WebSocket] Arquivo não encontrado no storage: ${filename}`);
+              }
+            } else if (data.mediaUrl.startsWith('http')) {
+              // URL completa - verificar se é do nosso servidor
+              const appUrl = process.env.APP_URL || 'https://api.newvend.taticamarketing.com.br';
+              if (data.mediaUrl.startsWith(appUrl)) {
+                const urlPath = new URL(data.mediaUrl).pathname;
+                const filename = urlPath.replace('/media/', '');
+                try {
+                  filePath = await this.mediaService.getFilePath(filename);
+                } catch {
+                  console.warn(`⚠️ [WebSocket] Arquivo não encontrado no storage: ${filename}`);
+                }
+              }
+              // Se for URL externa, não tentar ler - usar URL diretamente
             }
-          } else {
-            // Assumir que é um caminho relativo
-            const relativePath = data.mediaUrl.replace(/^\/media\//, '');
-            filePath = path.join('./uploads', relativePath);
             
-            // Verificar se o arquivo existe antes de tentar ler
-            try {
-              await fs.access(filePath);
-            } catch {
-              console.error(`❌ [WebSocket] Arquivo não encontrado: ${filePath}`);
-              throw new Error(`Arquivo não encontrado: ${relativePath}`);
-            }
-          }
-
-          // Ler arquivo e converter para base64 (apenas se filePath foi definido)
-          let base64File: string | null = null;
-          if (filePath) {
-            try {
-              const fileBuffer = await fs.readFile(filePath);
-              base64File = fileBuffer.toString('base64');
-            } catch (fileError: any) {
-              console.error(`❌ [WebSocket] Erro ao ler arquivo ${filePath}:`, fileError.message);
-              throw new Error(`Erro ao ler arquivo: ${fileError.message}`);
+            // Se encontrou arquivo no servidor, ler e converter para base64
+            if (filePath) {
+              try {
+                const fileBuffer = await fs.readFile(filePath);
+                base64File = fileBuffer.toString('base64');
+              } catch (fileError: any) {
+                console.error(`❌ [WebSocket] Erro ao ler arquivo ${filePath}:`, fileError.message);
+                base64File = null;
+              }
             }
           }
           
-          // Determinar mimetype baseado na extensão
-          const getMimeType = (filename: string): string => {
-            const ext = filename.split('.').pop()?.toLowerCase();
-            const mimeTypes: { [key: string]: string } = {
-              'pdf': 'application/pdf',
-              'doc': 'application/msword',
-              'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-              'xls': 'application/vnd.ms-excel',
-              'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-              'jpg': 'image/jpeg',
-              'jpeg': 'image/jpeg',
-              'png': 'image/png',
-              'gif': 'image/gif',
-              'webp': 'image/webp',
-              'mp4': 'video/mp4',
-              'mpeg': 'video/mpeg',
-              'mp3': 'audio/mpeg',
-              'ogg': 'audio/ogg',
-              'wav': 'audio/wav',
-              'm4a': 'audio/mp4',
-            };
-            return mimeTypes[ext || ''] || 'application/octet-stream';
-          };
-
-          const mimeType = getMimeType(cleanFileName);
-
-          // Construir URL completa do arquivo para tentar primeiro
-          const appUrl = process.env.APP_URL || 'https://api.newvend.taticamarketing.com.br';
-          let fullMediaUrl: string;
-          
-          if (data.mediaUrl.startsWith('/media/')) {
-            fullMediaUrl = `${appUrl}${data.mediaUrl}`;
-          } else if (data.mediaUrl.startsWith('http')) {
-            fullMediaUrl = data.mediaUrl;
-          } else {
-            fullMediaUrl = `${appUrl}/media/${data.mediaUrl.replace(/^\/media\//, '')}`;
-          }
-
-          // Estratégia: Tentar primeiro com URL, depois base64, depois campo "media"
-          // Tentativa 1: URL completa (se o arquivo estiver acessível publicamente)
+          // Estratégia: Priorizar base64, depois URL
+          const cleanPhone = data.contactPhone.replace(/\D/g, '');
           let payload: any = {
-            number: data.contactPhone.replace(/\D/g, ''),
-            mediatype: 'document',
-            mediaUrl: fullMediaUrl,
+            number: cleanPhone,
+            mediatype: getMediaType(cleanFileName),
             fileName: cleanFileName,
           };
           
@@ -1044,89 +998,72 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
             payload.caption = data.message;
           }
           
-          try {
-            console.log(`📤 [WebSocket] Enviando mídia para ${data.contactPhone.replace(/\D/g, '')} via linha ${line.phone}`);
+          // Tentar com base64 primeiro (mais confiável)
+          if (base64File && typeof base64File === 'string') {
+            payload.base64 = base64File;
+            
+            try {
+              console.log(`📤 [WebSocket] Enviando mídia via base64 para ${cleanPhone} via linha ${line.phone}`);
+              apiResponse = await axios.post(
+                `${evolution.evolutionUrl}/message/sendMedia/${instanceName}`,
+                payload,
+                {
+                  headers: { 'apikey': evolution.evolutionKey },
+                  timeout: 30000,
+                }
+              );
+              console.log(`✅ [WebSocket] Mídia enviada com sucesso (base64)`);
+            } catch (base64Error: any) {
+              // Se base64 falhar, tentar com campo "media"
+              delete payload.base64;
+              payload.media = base64File;
+              
+              try {
+                console.log(`📤 [WebSocket] Tentando enviar mídia via campo "media"...`);
+                apiResponse = await axios.post(
+                  `${evolution.evolutionUrl}/message/sendMedia/${instanceName}`,
+                  payload,
+                  {
+                    headers: { 'apikey': evolution.evolutionKey },
+                    timeout: 30000,
+                  }
+                );
+                console.log(`✅ [WebSocket] Mídia enviada com sucesso (campo media)`);
+              } catch (mediaError: any) {
+                throw mediaError;
+              }
+            }
+          } else if (data.mediaUrl) {
+            // Se não tem base64, tentar com URL
+            const appUrl = process.env.APP_URL || 'https://api.newvend.taticamarketing.com.br';
+            let fullMediaUrl: string;
+            
+            if (data.mediaUrl.startsWith('/media/')) {
+              fullMediaUrl = `${appUrl}${data.mediaUrl}`;
+            } else if (data.mediaUrl.startsWith('http')) {
+              fullMediaUrl = data.mediaUrl;
+            } else {
+              fullMediaUrl = `${appUrl}/media/${data.mediaUrl.replace(/^\/media\//, '')}`;
+            }
+            
+            payload.mediaUrl = fullMediaUrl;
+            
+            console.log(`📤 [WebSocket] Enviando mídia via URL para ${cleanPhone} via linha ${line.phone}`);
             apiResponse = await axios.post(
               `${evolution.evolutionUrl}/message/sendMedia/${instanceName}`,
               payload,
               {
                 headers: { 'apikey': evolution.evolutionKey },
-                timeout: 30000, // 30 segundos
+                timeout: 30000,
               }
             );
-            console.log(`✅ [WebSocket] Resposta da Evolution API (mídia URL):`, {
-              status: apiResponse?.status,
-              data: apiResponse?.data,
-            });
-            
-          } catch (urlError: any) {
-            // Tentativa 2: Base64 puro (apenas se base64File estiver disponível)
-            if (!base64File || typeof base64File !== 'string') {
-              throw new Error('Não foi possível converter o arquivo para base64. Arquivo não encontrado ou inválido.');
-            }
-            
-            payload = {
-              number: data.contactPhone.replace(/\D/g, ''),
-              mediatype: 'document',
-              base64: String(base64File), // Base64 puro, sem prefixo - garantir que seja string
-              fileName: cleanFileName,
-            };
-            
-            if (data.message && data.message.trim()) {
-              payload.caption = data.message;
-            }
-            
-            try {
-              console.log(`📤 [WebSocket] Tentando enviar mídia via base64...`);
-              apiResponse = await axios.post(
-                `${evolution.evolutionUrl}/message/sendMedia/${instanceName}`,
-                payload,
-                {
-                  headers: { 'apikey': evolution.evolutionKey },
-                  timeout: 30000, // 30 segundos
-                }
-              );
-              console.log(`✅ [WebSocket] Resposta da Evolution API (mídia base64):`, {
-                status: apiResponse?.status,
-                data: apiResponse?.data,
-              });
-              
-            } catch (base64Error: any) {
-              // Tentativa 3: Campo "media" (garantir que base64File seja string válida)
-              if (!base64File || typeof base64File !== 'string') {
-                throw new Error('Não foi possível converter o arquivo para base64. Arquivo não encontrado ou inválido.');
-              }
-              
-              payload = {
-                number: data.contactPhone.replace(/\D/g, ''),
-                mediatype: 'document',
-                media: String(base64File), // Garantir que seja string
-                fileName: cleanFileName,
-              };
-              
-              if (data.message && data.message.trim()) {
-                payload.caption = data.message;
-              }
-              
-              console.log(`📤 [WebSocket] Tentando enviar mídia via campo "media"...`);
-              apiResponse = await axios.post(
-                `${evolution.evolutionUrl}/message/sendMedia/${instanceName}`,
-                payload,
-                {
-                  headers: { 'apikey': evolution.evolutionKey },
-                  timeout: 30000, // 30 segundos
-                }
-              );
-              console.log(`✅ [WebSocket] Resposta da Evolution API (mídia campo media):`, {
-                status: apiResponse?.status,
-                data: apiResponse?.data,
-              });
-              
-            }
+            console.log(`✅ [WebSocket] Mídia enviada com sucesso (URL)`);
+          } else {
+            throw new Error('Nenhum arquivo fornecido (base64, mediaBase64 ou mediaUrl)');
           }
           
           // Limpar arquivo temporário se foi criado
-          if (filePath.includes('temp-')) {
+          if (filePath && filePath.includes('temp-')) {
             await fs.unlink(filePath).catch(() => {}); // Ignorar erros de limpeza
           }
         } catch (mediaError: any) {
