@@ -4,7 +4,7 @@ import { LinesService } from '../lines/lines.service';
 import { WebsocketGateway } from '../websocket/websocket.gateway';
 import { AppLoggerService } from '../logger/logger.service';
 
-interface LineLoadInfo {
+export interface LineLoadInfo {
   lineId: number;
   linePhone: string;
   operatorCount: number;

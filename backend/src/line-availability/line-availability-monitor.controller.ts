@@ -1,7 +1,7 @@
 import { Controller, Get, Query, UseGuards, ForbiddenException } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/roles.decorator';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 import { LineAvailabilityMonitorService } from './line-availability-monitor.service';
 import { OperatorQueueService } from '../operator-queue/operator-queue.service';
 import { LineSwitchingService } from '../line-switching/line-switching.service';

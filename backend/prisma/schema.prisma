@@ -53,6 +53,7 @@ model User {
 
   lineOperators LineOperator[] // Relacionamento com linhas
   createdLines  LinesStock[] // Linhas criadas por este usuário (para ativadores)
+  queueEntries  OperatorQueue[] @relation("OperatorQueueUser") // Entradas na fila de espera
 
   @@index([email])
   @@index([segment])
@@ -68,6 +69,8 @@ model Segment {
   allowsFreeMessage Boolean @default(true) // Se true, permite mensagens livres no 1x1. Se false, só permite templates.
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  queueEntries     OperatorQueue[] @relation("OperatorQueueSegment") // Entradas na fila de espera deste segmento
 
   @@index([name])
 }
@@ -158,6 +161,7 @@ model LinesStock {
 
   operators LineOperator[] // Relacionamento com operadores
   creator   User?          @relation(fields: [createdBy], references: [id]) // Usuário que criou
+  assignedQueueEntries OperatorQueue[] @relation("OperatorQueueAssignedLine") // Entradas na fila que receberam esta linha
 
   @@index([phone])
   @@index([lineStatus])
@@ -424,6 +428,10 @@ model OperatorQueue {
   assignedAt     DateTime?
   expiresAt      DateTime?
   assignedLineId Int?
+
+  user           User      @relation("OperatorQueueUser", fields: [userId], references: [id], onDelete: Cascade)
+  segment        Segment?  @relation("OperatorQueueSegment", fields: [segmentId], references: [id], onDelete: SetNull)
+  assignedLine   LinesStock? @relation("OperatorQueueAssignedLine", fields: [assignedLineId], references: [id], onDelete: SetNull)
 
   @@unique([userId, status])
   @@index([status, priority, createdAt])

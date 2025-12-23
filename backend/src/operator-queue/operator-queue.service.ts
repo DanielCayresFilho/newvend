@@ -4,7 +4,7 @@ import { LinesService } from '../lines/lines.service';
 import { WebsocketGateway } from '../websocket/websocket.gateway';
 import { AppLoggerService } from '../logger/logger.service';
 
-interface QueueEntry {
+export interface QueueEntry {
   id: number;
   userId: number;
   userName: string;
