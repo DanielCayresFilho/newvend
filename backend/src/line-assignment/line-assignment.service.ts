@@ -79,7 +79,16 @@ export class LineAssignmentService {
             lineStatus: 'active',
           },
           include: {
-            operators: true,
+            operators: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    segment: true,
+                  },
+                },
+              },
+            },
           },
         }),
       );
@@ -90,7 +99,7 @@ export class LineAssignmentService {
         if (line.operators.length >= 2) return false;
         // Verificar se não mistura segmentos
         const hasDifferentSegment = line.operators.some(
-          (op) => op.user.segment !== userSegment,
+          (op) => op.user?.segment !== userSegment,
         );
         return !hasDifferentSegment;
       });

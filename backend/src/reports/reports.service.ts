@@ -1196,6 +1196,13 @@ export class ReportsService {
    * Estrutura: id, Número, Status, Segmento, Operador Vinculado, Data de Transferência
    */
   async getLinhasReport(filters: ReportFilterDto) {
+    // Log para debug - verificar se as datas estão chegando corretamente
+    console.log('[Reports] getLinhasReport - Filtros recebidos:', {
+      startDate: filters.startDate,
+      endDate: filters.endDate,
+      segment: filters.segment,
+    });
+
     const whereClause: any = {};
 
     // Excluir linhas de segmento padrão
@@ -1243,14 +1250,36 @@ export class ReportsService {
     if (filters.startDate || filters.endDate) {
       lineOperatorsQuery.createdAt = {};
       if (filters.startDate) {
-        const startDate = new Date(filters.startDate);
-        startDate.setHours(0, 0, 0, 0);
+        // Validar formato da data (YYYY-MM-DD)
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(filters.startDate)) {
+          console.error('[Reports] Formato de startDate inválido:', filters.startDate);
+          throw new Error('Formato de data inicial inválido. Use YYYY-MM-DD');
+        }
+        // Criar data no timezone local para evitar problemas de UTC
+        const [year, month, day] = filters.startDate.split('-').map(Number);
+        const startDate = new Date(year, month - 1, day, 0, 0, 0, 0);
         lineOperatorsQuery.createdAt.gte = startDate;
+        console.log('[Reports] Filtro startDate aplicado:', {
+          original: filters.startDate,
+          parsed: startDate.toISOString(),
+          local: startDate.toLocaleString('pt-BR'),
+        });
       }
       if (filters.endDate) {
-        const endDate = new Date(filters.endDate);
-        endDate.setHours(23, 59, 59, 999);
+        // Validar formato da data (YYYY-MM-DD)
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(filters.endDate)) {
+          console.error('[Reports] Formato de endDate inválido:', filters.endDate);
+          throw new Error('Formato de data final inválido. Use YYYY-MM-DD');
+        }
+        // Criar data no timezone local para evitar problemas de UTC
+        const [year, month, day] = filters.endDate.split('-').map(Number);
+        const endDate = new Date(year, month - 1, day, 23, 59, 59, 999);
         lineOperatorsQuery.createdAt.lte = endDate;
+        console.log('[Reports] Filtro endDate aplicado:', {
+          original: filters.endDate,
+          parsed: endDate.toISOString(),
+          local: endDate.toLocaleString('pt-BR'),
+        });
       }
     }
 
