@@ -1034,30 +1034,75 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
               }
             }
           } else if (data.mediaUrl) {
-            // Se não tem base64, tentar com URL
-            const appUrl = process.env.APP_URL || 'https://api.newvend.taticamarketing.com.br';
-            let fullMediaUrl: string;
-            
-            if (data.mediaUrl.startsWith('/media/')) {
-              fullMediaUrl = `${appUrl}${data.mediaUrl}`;
-            } else if (data.mediaUrl.startsWith('http')) {
-              fullMediaUrl = data.mediaUrl;
-            } else {
-              fullMediaUrl = `${appUrl}/media/${data.mediaUrl.replace(/^\/media\//, '')}`;
-            }
-            
-            payload.mediaUrl = fullMediaUrl;
-            
-            console.log(`📤 [WebSocket] Enviando mídia via URL para ${cleanPhone} via linha ${line.phone}`);
-            apiResponse = await axios.post(
-              `${evolution.evolutionUrl}/message/sendMedia/${instanceName}`,
-              payload,
-              {
-                headers: { 'apikey': evolution.evolutionKey },
-                timeout: 30000,
+            // Se não tem base64 e tem mediaUrl, tentar ler do servidor novamente (fallback)
+            // Se não conseguir ler, não tentar URL (Evolution API não aceita URLs privadas)
+            if (!filePath) {
+              // Tentar novamente encontrar o arquivo
+              if (data.mediaUrl.startsWith('/media/')) {
+                const filename = data.mediaUrl.replace('/media/', '');
+                try {
+                  filePath = await this.mediaService.getFilePath(filename);
+                  const fileBuffer = await fs.readFile(filePath);
+                  base64File = fileBuffer.toString('base64');
+                  
+                  // Agora que temos base64, tentar enviar
+                  payload.base64 = base64File;
+                  console.log(`📤 [WebSocket] Enviando mídia via base64 (lido do servidor) para ${cleanPhone} via linha ${line.phone}`);
+                  apiResponse = await axios.post(
+                    `${evolution.evolutionUrl}/message/sendMedia/${instanceName}`,
+                    payload,
+                    {
+                      headers: { 'apikey': evolution.evolutionKey },
+                      timeout: 30000,
+                    }
+                  );
+                  console.log(`✅ [WebSocket] Mídia enviada com sucesso (base64 do servidor)`);
+                } catch (fileError: any) {
+                  throw new Error(`Arquivo não encontrado no servidor: ${filename}. A Evolution API requer base64 ou URL pública acessível.`);
+                }
+              } else if (data.mediaUrl.startsWith('http')) {
+                // URL externa - tentar enviar diretamente (pode funcionar se for URL pública)
+                const appUrl = process.env.APP_URL || 'https://api.newvend.taticamarketing.com.br';
+                if (data.mediaUrl.startsWith(appUrl)) {
+                  // É do nosso servidor mas não encontrou o arquivo - erro
+                  throw new Error(`Arquivo não encontrado no servidor. A Evolution API requer base64 ou URL pública acessível.`);
+                } else {
+                  // URL externa - tentar enviar (pode funcionar)
+                  payload.mediaUrl = data.mediaUrl;
+                  console.log(`📤 [WebSocket] Enviando mídia via URL externa para ${cleanPhone} via linha ${line.phone}`);
+                  apiResponse = await axios.post(
+                    `${evolution.evolutionUrl}/message/sendMedia/${instanceName}`,
+                    payload,
+                    {
+                      headers: { 'apikey': evolution.evolutionKey },
+                      timeout: 30000,
+                    }
+                  );
+                  console.log(`✅ [WebSocket] Mídia enviada com sucesso (URL externa)`);
+                }
+              } else {
+                throw new Error(`Arquivo não encontrado. A Evolution API requer base64 ou URL pública acessível.`);
               }
-            );
-            console.log(`✅ [WebSocket] Mídia enviada com sucesso (URL)`);
+            } else {
+              // Se filePath existe mas base64File não foi criado, tentar ler novamente
+              try {
+                const fileBuffer = await fs.readFile(filePath);
+                base64File = fileBuffer.toString('base64');
+                payload.base64 = base64File;
+                console.log(`📤 [WebSocket] Enviando mídia via base64 (lido do servidor) para ${cleanPhone} via linha ${line.phone}`);
+                apiResponse = await axios.post(
+                  `${evolution.evolutionUrl}/message/sendMedia/${instanceName}`,
+                  payload,
+                  {
+                    headers: { 'apikey': evolution.evolutionKey },
+                    timeout: 30000,
+                  }
+                );
+                console.log(`✅ [WebSocket] Mídia enviada com sucesso (base64 do servidor)`);
+              } catch (fileError: any) {
+                throw new Error(`Erro ao ler arquivo do servidor: ${fileError.message}`);
+              }
+            }
           } else {
             throw new Error('Nenhum arquivo fornecido (base64, mediaBase64 ou mediaUrl)');
           }
