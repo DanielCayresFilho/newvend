@@ -248,55 +248,63 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
             }
           }
           
-          // Se ainda não tem linha, tentar busca mais ampla (linhas sem segmento - segmento padrão)
+          // Se ainda não tem linha, tentar busca mais ampla (linhas do segmento "Padrão")
           if (!availableLine || !user.line) {
-            // Buscar linhas ativas sem segmento (segmento padrão/null)
-            const anyActiveLines = await this.prisma.linesStock.findMany({
-              where: {
-                lineStatus: 'active',
-                segment: null, // Apenas linhas sem segmento (segmento padrão)
-              },
+            // Buscar o segmento "Padrão" pelo nome (criado na seed)
+            const defaultSegment = await this.prisma.segment.findUnique({
+              where: { name: 'Padrão' },
             });
             
-            if (anyActiveLines.length === 0) {
-              console.warn(`⚠️ [WebSocket] Não existem linhas padrão (sem segmento) disponíveis para o operador ${user.name} (ID: ${user.id})`);
-            }
-            
-            // Filtrar por evolutions ativas
-            const filteredAnyLines = await this.controlPanelService.filterLinesByActiveEvolutions(anyActiveLines, user.segment);
-            const fallbackLine = await this.findAvailableLineForOperator(filteredAnyLines, user.id, user.segment);
-            
-            if (!fallbackLine && anyActiveLines.length > 0) {
-              console.warn(`⚠️ [WebSocket] Linhas padrão (sem segmento) existem, mas nenhuma está disponível (todas já têm 2 operadores ou evoluções inativas) para o operador ${user.name} (ID: ${user.id})`);
-            }
-            
-            if (fallbackLine) {
-              const currentOperatorsCount = await (this.prisma as any).lineOperator.count({
-                where: { lineId: fallbackLine.id },
+            if (defaultSegment) {
+              // Buscar linhas ativas do segmento "Padrão"
+              const anyActiveLines = await this.prisma.linesStock.findMany({
+                where: {
+                  lineStatus: 'active',
+                  segment: defaultSegment.id, // Segmento "Padrão" pelo ID
+                },
               });
               
-              // Linha sem segmento (padrão) pode ter até 2 operadores
-              // Se está sem segmento, aceita qualquer operador (é linha padrão/compartilhada)
-              if (currentOperatorsCount < 2) {
-                // Vincular operador à linha usando método com transaction + lock
-                try {
-                  await this.linesService.assignOperatorToLine(fallbackLine.id, user.id);
-                  
-                  // Atualizar segmento da linha se operador tem segmento
-                  // Isso faz a linha deixar de ser "padrão" e passa a ser do segmento do operador
-                  if (user.segment && fallbackLine.segment !== user.segment) {
-                    await this.prisma.linesStock.update({
-                      where: { id: fallbackLine.id },
-                      data: { segment: user.segment },
-                    });
+              if (anyActiveLines.length === 0) {
+                console.warn(`⚠️ [WebSocket] Não existem linhas do segmento "Padrão" disponíveis para o operador ${user.name} (ID: ${user.id})`);
+              }
+              
+              // Filtrar por evolutions ativas
+              const filteredAnyLines = await this.controlPanelService.filterLinesByActiveEvolutions(anyActiveLines, user.segment);
+              const fallbackLine = await this.findAvailableLineForOperator(filteredAnyLines, user.id, user.segment);
+              
+              if (!fallbackLine && anyActiveLines.length > 0) {
+                console.warn(`⚠️ [WebSocket] Linhas do segmento "Padrão" existem, mas nenhuma está disponível (todas já têm 2 operadores ou evoluções inativas) para o operador ${user.name} (ID: ${user.id})`);
+              }
+              
+              if (fallbackLine) {
+                const currentOperatorsCount = await (this.prisma as any).lineOperator.count({
+                  where: { lineId: fallbackLine.id },
+                });
+                
+                // Linha do segmento "Padrão" pode ter até 2 operadores
+                // Aceita qualquer operador (é linha padrão/compartilhada)
+                if (currentOperatorsCount < 2) {
+                  // Vincular operador à linha usando método com transaction + lock
+                  try {
+                    await this.linesService.assignOperatorToLine(fallbackLine.id, user.id);
+                    
+                    // Atualizar segmento da linha se operador tem segmento
+                    // Isso faz a linha deixar de ser "Padrão" e passa a ser do segmento do operador
+                    if (user.segment && fallbackLine.segment === defaultSegment.id) {
+                      await this.prisma.linesStock.update({
+                        where: { id: fallbackLine.id },
+                        data: { segment: user.segment },
+                      });
+                      console.log(`🔄 [WebSocket] Segmento da linha ${fallbackLine.phone} atualizado de "Padrão" para segmento do operador ${user.name}`);
+                    }
+                    
+                    user.line = fallbackLine.id;
+                    
+                    // Notificação removida - operador não precisa saber
+                  } catch (error) {
+                    console.error(`❌ [WebSocket] Erro ao vincular linha ${fallbackLine.id} ao operador ${user.id}:`, error.message);
+                    // Continuar para tentar outra linha
                   }
-                  
-                  user.line = fallbackLine.id;
-                  
-                  // Notificação removida - operador não precisa saber
-                } catch (error) {
-                  console.error(`❌ [WebSocket] Erro ao vincular linha ${fallbackLine.id} ao operador ${user.id}:`, error.message);
-                  // Continuar para tentar outra linha
                 }
               }
             }

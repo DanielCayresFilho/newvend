@@ -183,27 +183,34 @@ export class ApiMessagesService {
       }
     }
 
-    // 2. Se não encontrou linha do segmento, buscar linha sem segmento (padrão)
+    // 2. Se não encontrou linha do segmento, buscar linha do segmento "Padrão"
     if (!availableLine) {
-      const defaultLines = await this.prisma.linesStock.findMany({
-        where: {
-          lineStatus: 'active',
-          segment: null, // Linhas sem segmento (padrão)
-        },
+      // Buscar o segmento "Padrão" pelo nome (criado na seed)
+      const defaultSegment = await this.prisma.segment.findUnique({
+        where: { name: 'Padrão' },
       });
 
-      // Filtrar por evolutions ativas
-      const filteredDefaultLines = await this.controlPanelService.filterLinesByActiveEvolutions(defaultLines, operator.segment || undefined);
-
-      // Para cada linha, verificar se tem menos de 2 operadores
-      for (const line of filteredDefaultLines) {
-        const operatorsCount = await (this.prisma as any).lineOperator.count({
-          where: { lineId: line.id },
+      if (defaultSegment) {
+        const defaultLines = await this.prisma.linesStock.findMany({
+          where: {
+            lineStatus: 'active',
+            segment: defaultSegment.id, // Segmento "Padrão" pelo ID
+          },
         });
 
-        if (operatorsCount < 2) {
-          availableLine = line;
-          break;
+        // Filtrar por evolutions ativas
+        const filteredDefaultLines = await this.controlPanelService.filterLinesByActiveEvolutions(defaultLines, operator.segment || undefined);
+
+        // Para cada linha, verificar se tem menos de 2 operadores
+        for (const line of filteredDefaultLines) {
+          const operatorsCount = await (this.prisma as any).lineOperator.count({
+            where: { lineId: line.id },
+          });
+
+          if (operatorsCount < 2) {
+            availableLine = line;
+            break;
+          }
         }
       }
     }
@@ -218,7 +225,12 @@ export class ApiMessagesService {
       console.log(`✅ [ApiMessages] Linha ${availableLine.phone} atribuída automaticamente ao operador ${operator.email}`);
       
       // Se encontrou linha padrão e operador tem segmento, atualizar o segmento da linha
-      if (availableLine.segment === null && operator.segment) {
+      // Verificar se a linha pertence ao segmento "Padrão"
+      const defaultSegment = await this.prisma.segment.findUnique({
+        where: { name: 'Padrão' },
+      });
+      
+      if (defaultSegment && availableLine.segment === defaultSegment.id && operator.segment) {
         await this.prisma.linesStock.update({
           where: { id: availableLine.id },
           data: { segment: operator.segment },

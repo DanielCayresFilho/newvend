@@ -7,10 +7,21 @@ export class ReportsService {
   constructor(private prisma: PrismaService) {}
 
   /**
-   * Helper: Formatar data como YYYY-MM-DD
+   * Helper: Formatar data como YYYY-MM-DD (formato ISO)
    */
   private formatDate(date: Date): string {
     return date.toISOString().split('T')[0];
+  }
+
+  /**
+   * Helper: Formatar data como DD/MM/YYYY (formato brasileiro)
+   */
+  private formatDateBrazilian(date: Date): string {
+    const d = new Date(date);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
   }
 
   /**
@@ -1211,7 +1222,7 @@ export class ReportsService {
     // Buscar todas as linhas com filtros de segmento
     const lines = await this.prisma.linesStock.findMany({
       where: whereClause,
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: 'asc' },
     });
 
     const segments = await this.prisma.segment.findMany();
@@ -1295,16 +1306,25 @@ export class ReportsService {
         Número: line.phone,
         Blindado: line.lineStatus === 'ban' ? 'Sim' : line.lineStatus === 'active' ? 'Não' : 'Desconhecido',
         'Data de Transferencia': this.formatDateTime(transferDate),
+        // Campo auxiliar para ordenação
+        _sortDate: transferDate,
       };
     });
 
+    // Ordenar por data de transferência ASC
+    result.sort((a, b) => a._sortDate.getTime() - b._sortDate.getTime());
+
+    // Remover campo auxiliar de ordenação
+    const finalResult = result.map(({ _sortDate, ...rest }) => rest);
+
     // Normalizar todos os campos de texto do resultado
-    return this.normalizeObject(result);
+    return this.normalizeObject(finalResult);
   }
 
   /**
    * RELATÓRIO DE MENSAGENS POR LINHA
-   * Estrutura: Número, Carteira, Quantidade de Mensagens
+   * Estrutura: Número, Carteira, Data (dia), Quantidade de Mensagens
+   * Agrupa por linha e por dia
    */
   async getMensagensPorLinhaReport(filters: ReportFilterDto) {
     const whereClauseCampaigns: any = {};
@@ -1363,6 +1383,7 @@ export class ReportsService {
       },
       select: {
         lineReceptor: true,
+        dateTime: true, // Incluir data para agrupamento por dia
       },
     });
 
@@ -1374,6 +1395,7 @@ export class ReportsService {
       },
       select: {
         userLine: true,
+        datetime: true, // Incluir data para agrupamento por dia
       },
     });
 
@@ -1381,51 +1403,89 @@ export class ReportsService {
     const segments = await this.prisma.segment.findMany();
     const segmentMap = new Map(segments.map(s => [s.id, s]));
 
-    // Agrupar mensagens por linha
-    const lineGroups: Record<number, number> = {};
+    // Função helper para normalizar data para o início do dia (sem hora)
+    const normalizeToDate = (date: Date): Date => {
+      const normalized = new Date(date);
+      normalized.setHours(0, 0, 0, 0);
+      return normalized;
+    };
 
-    // Contar mensagens de campanhas
+    // Função helper para criar chave de agrupamento (linha_id + data)
+    const getGroupKey = (lineId: number, date: Date): string => {
+      const normalizedDate = normalizeToDate(date);
+      const dateStr = normalizedDate.toISOString().split('T')[0]; // YYYY-MM-DD
+      return `${lineId}_${dateStr}`;
+    };
+
+    // Agrupar mensagens por linha E por dia (sem hora)
+    // Chave: `${lineId}_${YYYY-MM-DD}`, valor: quantidade de mensagens
+    const lineGroupsByDate: Record<string, { count: number; date: Date; lineId: number }> = {};
+
+    // Contar mensagens de campanhas agrupando por linha e dia
     campaigns.forEach(campaign => {
-      if (campaign.lineReceptor) {
-        if (!lineGroups[campaign.lineReceptor]) {
-          lineGroups[campaign.lineReceptor] = 0;
+      if (campaign.lineReceptor && campaign.dateTime) {
+        const groupKey = getGroupKey(campaign.lineReceptor, campaign.dateTime);
+        if (!lineGroupsByDate[groupKey]) {
+          lineGroupsByDate[groupKey] = {
+            count: 0,
+            date: normalizeToDate(campaign.dateTime),
+            lineId: campaign.lineReceptor,
+          };
         }
-        lineGroups[campaign.lineReceptor]++;
+        lineGroupsByDate[groupKey].count++;
       }
     });
 
-    // Contar mensagens de conversas
+    // Contar mensagens de conversas agrupando por linha e dia
     conversations.forEach(conv => {
-      if (conv.userLine) {
-        if (!lineGroups[conv.userLine]) {
-          lineGroups[conv.userLine] = 0;
+      if (conv.userLine && conv.datetime) {
+        const groupKey = getGroupKey(conv.userLine, conv.datetime);
+        if (!lineGroupsByDate[groupKey]) {
+          lineGroupsByDate[groupKey] = {
+            count: 0,
+            date: normalizeToDate(conv.datetime),
+            lineId: conv.userLine,
+          };
         }
-        lineGroups[conv.userLine]++;
+        lineGroupsByDate[groupKey].count++;
       }
     });
 
-    // Construir resultado apenas para linhas que enviaram mensagens
+    // Construir resultado agrupando por linha e dia
     const result: any[] = [];
 
-    Object.entries(lineGroups).forEach(([lineIdStr, count]) => {
-      const lineId = parseInt(lineIdStr);
-      const line = lineMap.get(lineId);
+    Object.entries(lineGroupsByDate).forEach(([groupKey, data]) => {
+      const line = lineMap.get(data.lineId);
       
-      if (line && count > 0) {
+      if (line && data.count > 0) {
         const segment = line.segment ? segmentMap.get(line.segment) : null;
+
+        // Formatar data como DD/MM/YYYY (formato brasileiro)
+        const formattedDate = this.formatDateBrazilian(data.date);
 
         result.push({
           Número: line.phone,
           Carteira: this.normalizeText(segment?.name) || 'Sem segmento',
-          'Quantidade de Mensagens': count,
+          Data: formattedDate,
+          'Quantidade de Mensagens': data.count,
+          // Campos auxiliares para ordenação
+          _sortDate: data.date,
+          _lineId: data.lineId,
         });
       }
     });
 
-    // Ordenar por quantidade de mensagens (maior para menor)
-    result.sort((a, b) => b['Quantidade de Mensagens'] - a['Quantidade de Mensagens']);
+    // Ordenar por data ASC, depois por linha ID ASC (para manter consistência)
+    result.sort((a, b) => {
+      const dateCompare = a._sortDate.getTime() - b._sortDate.getTime();
+      if (dateCompare !== 0) return dateCompare;
+      return a._lineId - b._lineId;
+    });
 
-    return this.normalizeObject(result);
+    // Remover campos auxiliares de ordenação
+    const finalResult = result.map(({ _sortDate, _lineId, ...rest }) => rest);
+
+    return this.normalizeObject(finalResult);
   }
 
   /**

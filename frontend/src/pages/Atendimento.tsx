@@ -32,7 +32,7 @@ import {
 } from "@/components/ui/select";
 import { useNotificationSound } from "@/hooks/useNotificationSound";
 import { toast } from "@/hooks/use-toast";
-import { conversationsService, tabulationsService, contactsService, templatesService, segmentsService, Contact, Conversation as APIConversation, Tabulation, Template, getAuthToken } from "@/services/api";
+import { conversationsService, tabulationsService, contactsService, templatesService, segmentsService, Contact, Conversation as APIConversation, Tabulation, Template, getAuthToken, API_BASE_URL } from "@/services/api";
 import { useRealtimeConnection, useRealtimeSubscription } from "@/hooks/useRealtimeConnection";
 import { WS_EVENTS, realtimeSocket } from "@/services/websocket";
 import { format } from "date-fns";
@@ -600,7 +600,7 @@ export default function Atendimento() {
         throw new Error('Não autenticado');
       }
 
-      const response = await fetch(`${API_URL}/media/upload`, {
+      const response = await fetch(`${API_BASE_URL}/media/upload`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -614,7 +614,7 @@ export default function Atendimento() {
 
       const data = await response.json();
       const messageType = getMessageTypeFromMime(data.mimeType);
-      const mediaUrl = data.mediaUrl.startsWith('http') ? data.mediaUrl : `${API_URL}${data.mediaUrl}`;
+      const mediaUrl = data.mediaUrl.startsWith('http') ? data.mediaUrl : `${API_BASE_URL}${data.mediaUrl}`;
 
       // Enviar mensagem com mídia via WebSocket
       if (isRealtimeConnected) {
@@ -1482,11 +1482,11 @@ export default function Atendimento() {
                         {msg.messageType === 'image' && msg.mediaUrl ? (
                           <div className="mb-2">
                             <img 
-                              src={msg.mediaUrl.startsWith('http') ? msg.mediaUrl : `${API_URL}${msg.mediaUrl}`}
+                              src={msg.mediaUrl.startsWith('http') ? msg.mediaUrl : `${API_BASE_URL}${msg.mediaUrl}`}
                               alt="Imagem"
                               className="max-w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                               style={{ maxHeight: '300px' }}
-                              onClick={() => window.open(msg.mediaUrl!.startsWith('http') ? msg.mediaUrl! : `${API_URL}${msg.mediaUrl}`, '_blank')}
+                              onClick={() => window.open(msg.mediaUrl!.startsWith('http') ? msg.mediaUrl! : `${API_BASE_URL}${msg.mediaUrl}`, '_blank')}
                             />
                             {msg.message && !msg.message.includes('recebida') && (
                               <p className="text-sm mt-2">{msg.message}</p>
@@ -1497,7 +1497,7 @@ export default function Atendimento() {
                             <audio 
                               controls 
                               className="max-w-full"
-                              src={msg.mediaUrl.startsWith('http') ? msg.mediaUrl : `${API_URL}${msg.mediaUrl}`}
+                              src={msg.mediaUrl.startsWith('http') ? msg.mediaUrl : `${API_BASE_URL}${msg.mediaUrl}`}
                             >
                               Seu navegador não suporta áudio.
                             </audio>
@@ -1508,7 +1508,7 @@ export default function Atendimento() {
                               controls 
                               className="max-w-full rounded-lg"
                               style={{ maxHeight: '300px' }}
-                              src={msg.mediaUrl.startsWith('http') ? msg.mediaUrl : `${API_URL}${msg.mediaUrl}`}
+                              src={msg.mediaUrl.startsWith('http') ? msg.mediaUrl : `${API_BASE_URL}${msg.mediaUrl}`}
                             >
                               Seu navegador não suporta vídeo.
                             </video>
@@ -1519,7 +1519,7 @@ export default function Atendimento() {
                         ) : msg.messageType === 'document' && msg.mediaUrl ? (
                           <div className="mb-2">
                             <a 
-                              href={msg.mediaUrl.startsWith('http') ? msg.mediaUrl : `${API_URL}${msg.mediaUrl}`}
+                              href={msg.mediaUrl.startsWith('http') ? msg.mediaUrl : `${API_BASE_URL}${msg.mediaUrl}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="flex items-center gap-2 text-sm underline hover:no-underline"

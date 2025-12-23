@@ -624,27 +624,34 @@ export class LinesService {
           return true;
         });
 
-        // 2. Se não encontrou linha do segmento, buscar linha sem segmento (padrão)
+        // 2. Se não encontrou linha do segmento, buscar linha do segmento "Padrão"
         if (!availableLine) {
-          const defaultLines = await this.prisma.linesStock.findMany({
-            where: {
-              lineStatus: 'active',
-              segment: null, // Linhas sem segmento (padrão)
-            },
-            include: {
-              operators: {
-                include: {
-                  user: true,
-                },
-              },
-            },
+          // Buscar o segmento "Padrão" pelo nome (criado na seed)
+          const defaultSegment = await this.prisma.segment.findUnique({
+            where: { name: 'Padrão' },
           });
 
-          // Filtrar por evolutions ativas
-          const filteredDefaultLines = await this.controlPanelService.filterLinesByActiveEvolutions(defaultLines, operator.segment || undefined);
+          if (defaultSegment) {
+            const defaultLines = await this.prisma.linesStock.findMany({
+              where: {
+                lineStatus: 'active',
+                segment: defaultSegment.id, // Segmento "Padrão" pelo ID
+              },
+              include: {
+                operators: {
+                  include: {
+                    user: true,
+                  },
+                },
+              },
+            });
 
-          // Linhas sem segmento podem aceitar qualquer operador se tiverem menos de 2
-          availableLine = filteredDefaultLines.find(l => l.operators.length < 2);
+            // Filtrar por evolutions ativas
+            const filteredDefaultLines = await this.controlPanelService.filterLinesByActiveEvolutions(defaultLines, operator.segment || undefined);
+
+            // Linhas padrão podem aceitar qualquer operador se tiverem menos de 2
+            availableLine = filteredDefaultLines.find(l => l.operators.length < 2);
+          }
         }
 
         if (availableLine) {
