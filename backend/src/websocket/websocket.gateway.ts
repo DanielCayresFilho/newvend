@@ -947,43 +947,68 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         try {
           // OPERADOR envia documentos: sempre ler arquivo do servidor e converter para base64
           let base64File: string | null = data.base64 || data.mediaBase64 || null;
-          
+
+          console.log(`📤 [WebSocket] Tentando enviar documento - mediaUrl: ${data.mediaUrl}, base64 presente: ${!!base64File}`);
+
           // Se operador enviou mediaUrl do nosso servidor, SEMPRE ler arquivo e converter para base64
           const appUrl = process.env.APP_URL || 'https://api.newvend.taticamarketing.com.br';
           const isOurServer = data.mediaUrl && (
-            data.mediaUrl.startsWith('/media/') || 
-            (data.mediaUrl.startsWith('http') && data.mediaUrl.startsWith(appUrl))
+            data.mediaUrl.startsWith('/media/') ||
+            data.mediaUrl.startsWith(appUrl) ||
+            data.mediaUrl.includes('/media/')
           );
-          
+
+          console.log(`🔍 [WebSocket] Verificação de servidor - mediaUrl: ${data.mediaUrl}, appUrl: ${appUrl}, isOurServer: ${isOurServer}`);
+
           if (!base64File && data.mediaUrl) {
             if (isOurServer) {
               // É do nosso servidor - SEMPRE ler arquivo e converter para base64
               let filename: string;
-              
-              if (data.mediaUrl.startsWith('/media/')) {
-                filename = data.mediaUrl.replace('/media/', '');
-              } else {
-                // URL completa do nosso servidor
-                const urlPath = new URL(data.mediaUrl).pathname;
-                filename = urlPath.replace('/media/', '');
-              }
-              
+
               try {
+                if (data.mediaUrl.startsWith('/media/')) {
+                  // URL relativa: /media/arquivo.pdf
+                  filename = data.mediaUrl.replace('/media/', '');
+                } else if (data.mediaUrl.startsWith('http')) {
+                  // URL completa: https://api.newvend.../media/arquivo.pdf
+                  const urlPath = new URL(data.mediaUrl).pathname;
+                  filename = urlPath.replace('/media/', '');
+                } else {
+                  // Pode ser apenas o nome do arquivo
+                  filename = data.mediaUrl;
+                }
+
+                console.log(`📂 [WebSocket] Tentando ler arquivo: ${filename}`);
+
                 const filePath = await this.mediaService.getFilePath(filename);
                 const fileBuffer = await fs.readFile(filePath);
                 base64File = fileBuffer.toString('base64');
-                console.log(`📥 [WebSocket] Arquivo lido do servidor e convertido para base64: ${filename} (${(fileBuffer.length / 1024).toFixed(2)} KB)`);
+                console.log(`✅ [WebSocket] Arquivo lido do servidor e convertido para base64: ${filename} (${(fileBuffer.length / 1024).toFixed(2)} KB)`);
               } catch (fileError: any) {
-                console.error(`❌ [WebSocket] Erro ao ler arquivo do servidor: ${fileError.message}`);
-                throw new Error(`Arquivo não encontrado no servidor: ${filename}. Verifique se o upload foi realizado corretamente.`);
+                console.error(`❌ [WebSocket] Erro ao ler arquivo do servidor:`, {
+                  mediaUrl: data.mediaUrl,
+                  filename: filename,
+                  error: fileError.message,
+                  stack: fileError.stack
+                });
+                throw new Error(`Arquivo não encontrado no servidor: ${filename || data.mediaUrl}. Erro: ${fileError.message}`);
               }
+            } else {
+              console.log(`⚠️ [WebSocket] mediaUrl não é do nosso servidor: ${data.mediaUrl}`);
             }
           }
-          
+
           // OPERADOR enviando documento: SEMPRE usar base64 (do operador ou lido do servidor)
           const cleanPhone = data.contactPhone.replace(/\D/g, '');
-          
+
           if (!base64File || typeof base64File !== 'string') {
+            console.error(`❌ [WebSocket] Falha ao obter base64:`, {
+              hasBase64: !!base64File,
+              typeBase64: typeof base64File,
+              hasMediaUrl: !!data.mediaUrl,
+              mediaUrl: data.mediaUrl,
+              isOurServer: isOurServer
+            });
             throw new Error('Não foi possível obter o arquivo em base64. Verifique se o upload foi realizado corretamente.');
           }
           
