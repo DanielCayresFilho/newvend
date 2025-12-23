@@ -387,6 +387,9 @@ export class TemplatesService {
           sender: 'operator',
           messageType: 'template',
           userLine: lineId,
+          userId: dto.userId || null, // ID do operador específico
+          segment: dto.segment || line.segment || null, // Segmento do operador ou da linha
+          userName: dto.userName || null, // Nome do operador
         },
       });
     }

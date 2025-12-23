@@ -29,6 +29,7 @@ export class LineAssignmentService {
     userId: number,
     userSegment: number | null,
     traceId?: string,
+    excludeLineId?: number,
   ): Promise<LineAssignmentResult> {
     try {
       const user = await this.prisma.user.findUnique({
@@ -46,8 +47,8 @@ export class LineAssignmentService {
         return { success: false, reason: 'Usuário não encontrado' };
       }
 
-      // Se já tem linha ativa, retornar
-      if (user.line) {
+      // Se já tem linha ativa E não é para excluir essa linha, retornar
+      if (user.line && (!excludeLineId || user.line !== excludeLineId)) {
         const existingLine = await this.prisma.linesStock.findUnique({
           where: { id: user.line },
         });
@@ -104,27 +105,33 @@ export class LineAssignmentService {
         return !hasDifferentSegment;
       });
 
-      // Prioridade 2: Linhas com segmento null
+      // Prioridade 2: Linhas com segmento null (excluindo a linha antiga)
       if (!candidateLine) {
         candidateLine = availableLines.find((line) => {
+          if (excludeLineId && line.id === excludeLineId) return false;
           if (line.segment !== null) return false;
           if (line.operators.length >= 2) return false;
           return true;
         });
       }
 
-      // Prioridade 3: Linhas do segmento "Padrão"
+      // Prioridade 3: Linhas do segmento "Padrão" (excluindo a linha antiga)
       if (!candidateLine) {
         candidateLine = availableLines.find((line) => {
+          if (excludeLineId && line.id === excludeLineId) return false;
           if (line.segment !== 'Padrão') return false;
           if (line.operators.length >= 2) return false;
           return true;
         });
       }
 
-      // Prioridade 4: Qualquer linha ativa com espaço
+      // Prioridade 4: Qualquer linha disponível (excluindo a linha antiga) - última tentativa
       if (!candidateLine) {
-        candidateLine = availableLines.find((line) => line.operators.length < 2);
+        candidateLine = availableLines.find((line) => {
+          if (excludeLineId && line.id === excludeLineId) return false;
+          if (line.operators.length >= 2) return false;
+          return true;
+        });
       }
 
       if (!candidateLine) {
@@ -180,7 +187,7 @@ export class LineAssignmentService {
   }
 
   /**
-   * Realoca uma linha para um operador (quando linha atual foi banida)
+   * Realoca uma linha para um operador (quando linha atual foi banida ou com erro)
    */
   async reallocateLineForOperator(
     userId: number,
@@ -204,8 +211,8 @@ export class LineAssignmentService {
         });
       }
 
-      // Buscar nova linha disponível
-      return await this.findAvailableLineForOperator(userId, userSegment, traceId);
+      // Buscar nova linha disponível EXCLUINDO a linha antiga
+      return await this.findAvailableLineForOperator(userId, userSegment, traceId, oldLineId);
     } catch (error: any) {
       this.logger.error(
         `Erro ao realocar linha para operador ${userId}`,

@@ -797,6 +797,9 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
               contactName: contact?.name || data.message || 'Contato',
               variables: data.templateVariables || [],
               lineId: currentLineId,
+              userId: user.id, // IMPORTANTE: passar userId para a conversa aparecer para o operador
+              segment: user.segment, // IMPORTANTE: passar segment
+              userName: user.name, // Nome do operador
             });
 
             // Se sucesso, sair do loop

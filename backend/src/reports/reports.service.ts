@@ -1235,7 +1235,7 @@ export class ReportsService {
     const segments = await this.prisma.segment.findMany();
     const segmentMap = new Map(segments.map(s => [s.id, s]));
 
-    // Buscar todos os operadores vinculados via LineOperator (primeira atribuição)
+    // Buscar TODOS os operadores vinculados via LineOperator (sem filtrar por data ainda)
     const lineIds = lines.map(l => l.id);
     const lineOperatorsQuery: any = {
       lineId: { in: lineIds },
@@ -1246,44 +1246,8 @@ export class ReportsService {
       },
     };
 
-    // Se houver filtro de data, filtrar pela primeira atribuição (createdAt do LineOperator)
-    if (filters.startDate || filters.endDate) {
-      lineOperatorsQuery.createdAt = {};
-      if (filters.startDate) {
-        // Validar formato da data (YYYY-MM-DD)
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(filters.startDate)) {
-          console.error('[Reports] Formato de startDate inválido:', filters.startDate);
-          throw new Error('Formato de data inicial inválido. Use YYYY-MM-DD');
-        }
-        // Criar data no timezone local para evitar problemas de UTC
-        const [year, month, day] = filters.startDate.split('-').map(Number);
-        const startDate = new Date(year, month - 1, day, 0, 0, 0, 0);
-        lineOperatorsQuery.createdAt.gte = startDate;
-        console.log('[Reports] Filtro startDate aplicado:', {
-          original: filters.startDate,
-          parsed: startDate.toISOString(),
-          local: startDate.toLocaleString('pt-BR'),
-        });
-      }
-      if (filters.endDate) {
-        // Validar formato da data (YYYY-MM-DD)
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(filters.endDate)) {
-          console.error('[Reports] Formato de endDate inválido:', filters.endDate);
-          throw new Error('Formato de data final inválido. Use YYYY-MM-DD');
-        }
-        // Criar data no timezone local para evitar problemas de UTC
-        const [year, month, day] = filters.endDate.split('-').map(Number);
-        const endDate = new Date(year, month - 1, day, 23, 59, 59, 999);
-        lineOperatorsQuery.createdAt.lte = endDate;
-        console.log('[Reports] Filtro endDate aplicado:', {
-          original: filters.endDate,
-          parsed: endDate.toISOString(),
-          local: endDate.toLocaleString('pt-BR'),
-        });
-      }
-    }
-
-    const lineOperators = await (this.prisma as any).lineOperator.findMany({
+    // Buscar TODOS os lineOperators primeiro (sem filtro de data)
+    const allLineOperators = await (this.prisma as any).lineOperator.findMany({
       where: lineOperatorsQuery,
       include: {
         user: {
@@ -1299,11 +1263,47 @@ export class ReportsService {
       },
     });
 
+    // Preparar datas de filtro (se houver)
+    let filterStartDate: Date | null = null;
+    let filterEndDate: Date | null = null;
+    
+    if (filters.startDate) {
+      // Validar formato da data (YYYY-MM-DD)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(filters.startDate)) {
+        console.error('[Reports] Formato de startDate inválido:', filters.startDate);
+        throw new Error('Formato de data inicial inválido. Use YYYY-MM-DD');
+      }
+      // Criar data no timezone local para evitar problemas de UTC
+      const [year, month, day] = filters.startDate.split('-').map(Number);
+      filterStartDate = new Date(year, month - 1, day, 0, 0, 0, 0);
+      console.log('[Reports] Filtro startDate aplicado:', {
+        original: filters.startDate,
+        parsed: filterStartDate.toISOString(),
+        local: filterStartDate.toLocaleString('pt-BR'),
+      });
+    }
+    
+    if (filters.endDate) {
+      // Validar formato da data (YYYY-MM-DD)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(filters.endDate)) {
+        console.error('[Reports] Formato de endDate inválido:', filters.endDate);
+        throw new Error('Formato de data final inválido. Use YYYY-MM-DD');
+      }
+      // Criar data no timezone local para evitar problemas de UTC
+      const [year, month, day] = filters.endDate.split('-').map(Number);
+      filterEndDate = new Date(year, month - 1, day, 23, 59, 59, 999);
+      console.log('[Reports] Filtro endDate aplicado:', {
+        original: filters.endDate,
+        parsed: filterEndDate.toISOString(),
+        local: filterEndDate.toLocaleString('pt-BR'),
+      });
+    }
+
     // Agrupar operadores por linha e pegar a primeira data de atribuição
     const operatorsByLine = new Map<number, Array<{ user: any; createdAt: Date }>>();
     const firstTransferDateByLine = new Map<number, Date>();
     
-    lineOperators.forEach((lo: any) => {
+    allLineOperators.forEach((lo: any) => {
       if (!operatorsByLine.has(lo.lineId)) {
         operatorsByLine.set(lo.lineId, []);
       }
@@ -1312,17 +1312,30 @@ export class ReportsService {
         createdAt: lo.createdAt,
       });
       
-      // Guardar a primeira data de transferência (atribuição mais antiga)
+      // Guardar a primeira data de transferência (atribuição mais antiga) de TODAS as atribuições
       if (!firstTransferDateByLine.has(lo.lineId) || 
           lo.createdAt < firstTransferDateByLine.get(lo.lineId)!) {
         firstTransferDateByLine.set(lo.lineId, lo.createdAt);
       }
     });
 
-    // Filtrar linhas: se houver filtro de data, só incluir linhas que têm transferência no período
+    // Filtrar linhas: se houver filtro de data, incluir apenas linhas cuja primeira transferência está no período
     let filteredLines = lines;
-    if (filters.startDate || filters.endDate) {
-      filteredLines = lines.filter(line => firstTransferDateByLine.has(line.id));
+    if (filterStartDate || filterEndDate) {
+      filteredLines = lines.filter(line => {
+        const transferDate = firstTransferDateByLine.get(line.id);
+        if (!transferDate) {
+          // Se não tem transferência, usar createdAt da linha
+          const lineDate = line.createdAt;
+          if (filterStartDate && lineDate < filterStartDate) return false;
+          if (filterEndDate && lineDate > filterEndDate) return false;
+          return true;
+        }
+        // Verificar se a primeira transferência está no período
+        if (filterStartDate && transferDate < filterStartDate) return false;
+        if (filterEndDate && transferDate > filterEndDate) return false;
+        return true;
+      });
     }
 
     const result = filteredLines.map(line => {

@@ -43,6 +43,28 @@ export class SendTemplateDto {
   @IsNumber()
   @IsOptional()
   lineId?: number;
+
+  @Transform(({ value }) => {
+    if (value === null || value === undefined || value === '') return undefined;
+    const num = Number(value);
+    return isNaN(num) ? undefined : num;
+  })
+  @IsNumber()
+  @IsOptional()
+  userId?: number;
+
+  @Transform(({ value }) => {
+    if (value === null || value === undefined || value === '') return undefined;
+    const num = Number(value);
+    return isNaN(num) ? undefined : num;
+  })
+  @IsNumber()
+  @IsOptional()
+  segment?: number;
+
+  @IsString()
+  @IsOptional()
+  userName?: string;
 }
 
 export class SendTemplateMassiveDto {
