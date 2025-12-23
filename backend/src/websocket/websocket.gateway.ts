@@ -238,10 +238,58 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
                 try {
                   await this.linesService.assignOperatorToLine(availableLine.id, user.id);
 
-              // Atualizar user object
-              user.line = availableLine.id;
-              
-              // Notificação removida - operador não precisa saber
+                  // Verificar se a linha está ativa na Evolution ANTES de confirmar vinculação
+                  const evolution = await this.prisma.evolution.findUnique({
+                    where: { evolutionName: availableLine.evolutionName },
+                  });
+
+                  if (evolution) {
+                    const instanceName = `line_${availableLine.phone.replace(/\D/g, '')}`;
+                    const lineStatus = await this.healthCheckCacheService.getConnectionStatus(
+                      evolution.evolutionUrl,
+                      evolution.evolutionKey,
+                      instanceName
+                    );
+                    
+                    if (!lineStatus || lineStatus === 'ban' || lineStatus === 'disconnected' || lineStatus.toLowerCase() === 'ban' || lineStatus.toLowerCase() === 'disconnected') {
+                      console.warn(`⚠️ [WebSocket] Linha ${availableLine.phone} está ${lineStatus || 'desconectada'} na Evolution. Realocando...`);
+                      
+                      // Desvincular a linha banida
+                      await this.linesService.unassignOperatorFromLine(availableLine.id, user.id);
+                      
+                      // Realocar nova linha
+                      const reallocationResult = await this.lineAssignmentService.reallocateLineForOperator(
+                        user.id,
+                        user.segment || null
+                      );
+                      
+                      if (reallocationResult.success && reallocationResult.lineId) {
+                        const newLine = await this.prisma.linesStock.findUnique({
+                          where: { id: reallocationResult.lineId },
+                        });
+                        if (newLine) {
+                          user.line = newLine.id;
+                          availableLine = newLine;
+                          console.log(`✅ [WebSocket] Linha ${newLine.phone} realocada para operador ${user.name} após detectar linha banida`);
+                        } else {
+                          availableLine = null;
+                          user.line = null;
+                        }
+                      } else {
+                        console.error(`❌ [WebSocket] Não foi possível realocar linha para operador ${user.name}: ${reallocationResult.reason}`);
+                        availableLine = null;
+                        user.line = null;
+                      }
+                    } else {
+                      // Linha está ativa, confirmar vinculação
+                      user.line = availableLine.id;
+                      console.log(`✅ [WebSocket] Linha ${availableLine.phone} vinculada e verificada como ativa para operador ${user.name}`);
+                    }
+                  } else {
+                    // Evolution não encontrada, assumir que linha está ativa e continuar
+                    user.line = availableLine.id;
+                    console.log(`⚠️ [WebSocket] Evolution não encontrada para linha ${availableLine.phone}, assumindo ativa`);
+                  }
                 } catch (error) {
                   console.error(`❌ [WebSocket] Erro ao vincular linha ${availableLine.id} ao operador ${user.id}:`, error.message);
                   // Continuar para tentar outra linha
@@ -291,19 +339,65 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
                   try {
                     await this.linesService.assignOperatorToLine(fallbackLine.id, user.id);
                     
-                    // Atualizar segmento da linha se operador tem segmento
-                    // Isso faz a linha deixar de ser "Padrão" e passa a ser do segmento do operador
-                    if (user.segment && fallbackLine.segment === defaultSegment.id) {
-                      await this.prisma.linesStock.update({
-                        where: { id: fallbackLine.id },
-                        data: { segment: user.segment },
-                      });
-                      console.log(`🔄 [WebSocket] Segmento da linha ${fallbackLine.phone} atualizado de "Padrão" para segmento do operador ${user.name}`);
+                    // Verificar se a linha está ativa na Evolution ANTES de confirmar vinculação
+                    const evolution = await this.prisma.evolution.findUnique({
+                      where: { evolutionName: fallbackLine.evolutionName },
+                    });
+
+                    if (evolution) {
+                      const instanceName = `line_${fallbackLine.phone.replace(/\D/g, '')}`;
+                      const lineStatus = await this.healthCheckCacheService.getConnectionStatus(
+                        evolution.evolutionUrl,
+                        evolution.evolutionKey,
+                        instanceName
+                      );
+                      
+                      if (!lineStatus || lineStatus === 'ban' || lineStatus === 'disconnected' || lineStatus.toLowerCase() === 'ban' || lineStatus.toLowerCase() === 'disconnected') {
+                        console.warn(`⚠️ [WebSocket] Linha padrão ${fallbackLine.phone} está ${lineStatus || 'desconectada'} na Evolution. Realocando...`);
+                        
+                        // Desvincular a linha banida
+                        await this.linesService.unassignOperatorFromLine(fallbackLine.id, user.id);
+                        
+                        // Realocar nova linha
+                        const reallocationResult = await this.lineAssignmentService.reallocateLineForOperator(
+                          user.id,
+                          user.segment || null
+                        );
+                        
+                        if (reallocationResult.success && reallocationResult.lineId) {
+                          const newLine = await this.prisma.linesStock.findUnique({
+                            where: { id: reallocationResult.lineId },
+                          });
+                          if (newLine) {
+                            user.line = newLine.id;
+                            console.log(`✅ [WebSocket] Linha ${newLine.phone} realocada para operador ${user.name} após detectar linha banida (fallback)`);
+                          } else {
+                            user.line = null;
+                          }
+                        } else {
+                          console.error(`❌ [WebSocket] Não foi possível realocar linha para operador ${user.name}: ${reallocationResult.reason}`);
+                          user.line = null;
+                        }
+                      } else {
+                        // Linha está ativa, confirmar vinculação
+                        // Atualizar segmento da linha se operador tem segmento
+                        // Isso faz a linha deixar de ser "Padrão" e passa a ser do segmento do operador
+                        if (user.segment && fallbackLine.segment === defaultSegment.id) {
+                          await this.prisma.linesStock.update({
+                            where: { id: fallbackLine.id },
+                            data: { segment: user.segment },
+                          });
+                          console.log(`🔄 [WebSocket] Segmento da linha ${fallbackLine.phone} atualizado de "Padrão" para segmento do operador ${user.name}`);
+                        }
+                        
+                        user.line = fallbackLine.id;
+                        console.log(`✅ [WebSocket] Linha padrão ${fallbackLine.phone} vinculada e verificada como ativa para operador ${user.name}`);
+                      }
+                    } else {
+                      // Evolution não encontrada, assumir que linha está ativa e continuar
+                      user.line = fallbackLine.id;
+                      console.log(`⚠️ [WebSocket] Evolution não encontrada para linha padrão ${fallbackLine.phone}, assumindo ativa`);
                     }
-                    
-                    user.line = fallbackLine.id;
-                    
-                    // Notificação removida - operador não precisa saber
                   } catch (error) {
                     console.error(`❌ [WebSocket] Erro ao vincular linha ${fallbackLine.id} ao operador ${user.id}:`, error.message);
                     // Continuar para tentar outra linha
@@ -443,7 +537,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
   @SubscribeMessage('send-message')
   async handleSendMessage(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { contactPhone: string; message: string; messageType?: string; mediaUrl?: string; fileName?: string; isNewConversation?: boolean; templateId?: number; templateVariables?: TemplateVariableDto[]; base64?: string; mediaBase64?: string },
+    @MessageBody() data: { contactPhone: string; message: string; messageType?: string; mediaUrl?: string; fileName?: string; isNewConversation?: boolean; templateId?: number; templateVariables?: TemplateVariableDto[]; base64?: string; mediaBase64?: string; isAdminTest?: boolean },
   ) {
     const startTime = Date.now(); // Para métricas de latência
     const user = client.data.user;
@@ -461,6 +555,65 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         select: { lineId: true },
       });
       currentLineId = lineOperator?.lineId || null;
+    }
+
+    // Se operador tem linha, verificar se está ativa na Evolution ANTES de enviar mensagem
+    if (currentLineId) {
+      const currentLine = await this.prisma.linesStock.findUnique({
+        where: { id: currentLineId },
+      });
+
+      if (currentLine) {
+        // Verificar status da linha na Evolution
+        const evolution = await this.prisma.evolution.findUnique({
+          where: { evolutionName: currentLine.evolutionName },
+        });
+
+        if (evolution) {
+          const instanceName = `line_${currentLine.phone.replace(/\D/g, '')}`;
+          const lineStatus = await this.healthCheckCacheService.getConnectionStatus(
+            evolution.evolutionUrl,
+            evolution.evolutionKey,
+            instanceName
+          );
+
+          // Se linha está banida ou desconectada, realocar ANTES de enviar mensagem
+          if (!lineStatus || lineStatus === 'ban' || lineStatus === 'disconnected' || lineStatus.toLowerCase() === 'ban' || lineStatus.toLowerCase() === 'disconnected') {
+            console.warn(`⚠️ [WebSocket] Linha ${currentLine.phone} está ${lineStatus || 'desconectada'} antes de enviar mensagem. Realocando...`);
+
+            try {
+              // Desvincular linha banida
+              await this.linesService.unassignOperatorFromLine(currentLine.id, user.id);
+
+              // Realocar nova linha (mesma regra: mesmo segmento ou "Padrão")
+              const reallocationResult = await this.lineAssignmentService.reallocateLineForOperator(
+                user.id,
+                user.segment || null
+              );
+
+              if (reallocationResult.success && reallocationResult.lineId) {
+                const newLine = await this.prisma.linesStock.findUnique({
+                  where: { id: reallocationResult.lineId },
+                });
+                if (newLine) {
+                  currentLineId = newLine.id;
+                  user.line = newLine.id;
+                  console.log(`✅ [WebSocket] Linha ${newLine.phone} realocada para operador ${user.name} antes de enviar mensagem`);
+                } else {
+                  console.error(`❌ [WebSocket] Linha ${reallocationResult.lineId} não encontrada após realocação`);
+                  return { error: 'Não foi possível alocar linha ativa. Tente novamente.' };
+                }
+              } else {
+                console.error(`❌ [WebSocket] Não foi possível realocar linha para operador ${user.name}: ${reallocationResult.reason}`);
+                return { error: 'Não foi possível alocar linha ativa. Tente novamente.' };
+              }
+            } catch (error: any) {
+              console.error(`❌ [WebSocket] Erro ao realocar linha antes de enviar mensagem:`, error.message);
+              return { error: 'Erro ao verificar linha. Tente novamente.' };
+            }
+          }
+        }
+      }
     }
 
     // Se operador não tem linha, tentar atribuir automaticamente
@@ -686,6 +839,18 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         console.error(`❌ [WebSocket] Total de linhas do segmento "Padrão": ${defaultSegmentId ? await this.prisma.linesStock.count({ where: { lineStatus: 'active', segment: defaultSegmentId } }) : 0}`);
         // NÃO retornar erro aqui - deixar continuar e tentar enviar mesmo assim (pode dar erro depois, mas pelo menos tentou)
       }
+    }
+
+    // Verificar se é teste administrador (apenas admins podem usar)
+    const isAdminTest = data.isAdminTest === true && user.role === 'admin';
+    
+    if (data.isAdminTest === true && user.role !== 'admin') {
+      console.error('❌ [WebSocket] Apenas administradores podem usar modo teste');
+      return { error: 'Apenas administradores podem usar modo teste administrador' };
+    }
+
+    if (isAdminTest) {
+      console.log(`🧪 [WebSocket] Modo TESTE ADMINISTRADOR ativado por ${user.name} - esta ação NÃO aparecerá nos relatórios`);
     }
 
     // Verificar se é uma nova conversa (1x1) e se o operador tem permissão
@@ -1094,37 +1259,65 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
 
                 console.log(`📂 [WebSocket] Tentando ler arquivo: ${filename}`);
 
+                // Validar existência do arquivo ANTES de tentar ler
                 const filePath = await this.mediaService.getFilePath(filename);
+                
+                // Verificar se arquivo existe
+                try {
+                  await fs.access(filePath);
+                } catch (accessError) {
+                  console.error(`❌ [WebSocket] Arquivo não existe: ${filePath}`);
+                  throw new Error(`Arquivo não encontrado: ${filename}`);
+                }
+
+                // Ler arquivo
                 const fileBuffer = await fs.readFile(filePath);
+                
+                // Validar tamanho do arquivo (máximo 64MB - limite do WhatsApp)
+                const maxSizeBytes = 64 * 1024 * 1024; // 64MB
+                if (fileBuffer.length > maxSizeBytes) {
+                  throw new Error(`Arquivo muito grande: ${(fileBuffer.length / 1024 / 1024).toFixed(2)}MB. Máximo permitido: 64MB`);
+                }
+
+                // Validar extensão/tipo do arquivo
+                const allowedExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mpeg', 'avi', 'mov', 'mp3', 'ogg', 'wav', 'm4a'];
+                const fileExt = filename.split('.').pop()?.toLowerCase();
+                if (!fileExt || !allowedExtensions.includes(fileExt)) {
+                  console.warn(`⚠️ [WebSocket] Extensão de arquivo não reconhecida: ${fileExt}. Continuando mesmo assim...`);
+                }
+
                 base64File = fileBuffer.toString('base64');
                 console.log(`✅ [WebSocket] Arquivo lido do servidor e convertido para base64: ${filename} (${(fileBuffer.length / 1024).toFixed(2)} KB)`);
               } catch (fileError: any) {
                 console.error(`❌ [WebSocket] Erro ao ler arquivo do servidor:`, {
                   mediaUrl: data.mediaUrl,
-                  filename: filename,
+                  filename: filename || 'não identificado',
                   error: fileError.message,
                   stack: fileError.stack
                 });
-                throw new Error(`Arquivo não encontrado no servidor: ${filename || data.mediaUrl}. Erro: ${fileError.message}`);
+                throw new Error(`Erro ao processar arquivo: ${filename || data.mediaUrl}. ${fileError.message}`);
               }
             } else {
-              console.log(`⚠️ [WebSocket] mediaUrl não é do nosso servidor: ${data.mediaUrl}`);
+              console.log(`⚠️ [WebSocket] mediaUrl não é do nosso servidor: ${data.mediaUrl}. Tentando usar URL direta...`);
             }
           }
 
           // OPERADOR enviando documento: SEMPRE usar base64 (do operador ou lido do servidor)
           const cleanPhone = data.contactPhone.replace(/\D/g, '');
 
-          if (!base64File || typeof base64File !== 'string') {
-            console.error(`❌ [WebSocket] Falha ao obter base64:`, {
-              hasBase64: !!base64File,
-              typeBase64: typeof base64File,
-              hasMediaUrl: !!data.mediaUrl,
-              mediaUrl: data.mediaUrl,
-              isOurServer: isOurServer
-            });
-            throw new Error('Não foi possível obter o arquivo em base64. Verifique se o upload foi realizado corretamente.');
+          // Validação final: garantir que temos base64 ou URL válida
+          if (!base64File && !data.mediaUrl) {
+            console.error(`❌ [WebSocket] Falha crítica: nem base64 nem mediaUrl disponíveis`);
+            throw new Error('Não foi possível obter o arquivo. Verifique se o upload foi realizado corretamente.');
           }
+
+          if (base64File && typeof base64File !== 'string') {
+            console.error(`❌ [WebSocket] Base64 inválido (tipo: ${typeof base64File})`);
+            throw new Error('Formato de arquivo inválido. Base64 deve ser uma string.');
+          }
+
+          // Se não temos base64 mas temos URL externa, podemos tentar usar a URL diretamente
+          // (será tratado no envio)
 
           // ESTRATÉGIA: Enviar via URL pública ao invés de base64
           // A Evolution API prefere URLs para documentos
@@ -1182,26 +1375,36 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
               );
             } catch (sendError: any) {
               // Se falhar com URL, tentar com base64 puro antes de propagar erro
-              console.log(`🔄 [WebSocket] Tentando com base64 puro...`);
-              currentPayload.media = base64File;
+              console.log(`🔄 [WebSocket] Falha ao enviar com URL. Tentando com base64... (Erro: ${sendError.message})`);
               
-              try {
-                return await axios.post(
-                  `${evolution.evolutionUrl}/message/sendMedia/${instanceName}`,
-                  currentPayload,
-                  {
-                    headers: {
-                      'apikey': evolution.evolutionKey,
-                      'Content-Type': 'application/json',
-                    },
-                    timeout: 60000,
-                    maxContentLength: Infinity,
-                    maxBodyLength: Infinity,
-                  }
-                );
-              } catch (base64Error: any) {
-                // Se base64 também falhar, propagar o erro original para tentar realocação
-                throw sendError;
+              // Só tentar base64 se temos base64 disponível
+              if (base64File) {
+                currentPayload.media = base64File;
+                
+                try {
+                  console.log(`📤 [WebSocket] Tentando envio com base64 (tamanho: ${(base64File.length / 1024).toFixed(2)} KB)`);
+                  return await axios.post(
+                    `${evolution.evolutionUrl}/message/sendMedia/${instanceName}`,
+                    currentPayload,
+                    {
+                      headers: {
+                        'apikey': evolution.evolutionKey,
+                        'Content-Type': 'application/json',
+                      },
+                      timeout: 90000, // Timeout maior para base64 (pode ser maior)
+                      maxContentLength: Infinity,
+                      maxBodyLength: Infinity,
+                    }
+                  );
+                } catch (base64Error: any) {
+                  console.error(`❌ [WebSocket] Falha também com base64. Erro: ${base64Error.message}`);
+                  // Se base64 também falhar, propagar o erro para tentar realocação
+                  throw new Error(`Falha ao enviar arquivo (URL e base64): ${sendError.message}. Tente novamente.`);
+                }
+              } else {
+                // Se não temos base64 e URL falhou, propagar erro
+                console.error(`❌ [WebSocket] Não temos base64 para fallback. Erro original: ${sendError.message}`);
+                throw new Error(`Falha ao enviar arquivo via URL: ${sendError.message}. Arquivo não disponível em base64.`);
               }
             }
           };
@@ -1266,6 +1469,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         sender: 'operator',
         messageType: data.messageType || 'text',
         mediaUrl: data.mediaUrl,
+        isAdminTest: isAdminTest, // Marcar se é teste administrador
       });
 
       // Log apenas para mensagens enviadas com sucesso (fluxo principal)

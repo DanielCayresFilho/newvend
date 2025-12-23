@@ -5,6 +5,8 @@ import { WebsocketGateway } from '../websocket/websocket.gateway';
 import { OperatorQueueService } from '../operator-queue/operator-queue.service';
 import { LineSwitchingService } from '../line-switching/line-switching.service';
 import { AppLoggerService } from '../logger/logger.service';
+import { HealthCheckCacheService } from '../health-check-cache/health-check-cache.service';
+import { LineAssignmentService } from '../line-assignment/line-assignment.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
 
 interface MonitoringData {
@@ -44,6 +46,8 @@ export class LineAvailabilityMonitorService {
     private queueService: OperatorQueueService,
     @Inject(forwardRef(() => LineSwitchingService))
     private switchingService: LineSwitchingService,
+    private healthCheckCacheService: HealthCheckCacheService,
+    private lineAssignmentService: LineAssignmentService,
     private logger: AppLoggerService,
   ) {}
 
@@ -89,6 +93,137 @@ export class LineAvailabilityMonitorService {
     } catch (error) {
       this.logger.error(
         'Erro ao verificar disponibilidade de linhas',
+        error.stack,
+        'LineAvailability',
+        { error: error.message },
+      );
+    }
+  }
+
+  /**
+   * Cron job: Verificar linhas banidas a cada 15 segundos e realocar automaticamente
+   */
+  @Cron('*/15 * * * * *') // A cada 15 segundos
+  async checkOperatorLinesStatus(): Promise<void> {
+    try {
+      // Buscar todos os operadores online que têm linha vinculada
+      const onlineOperators = await this.prisma.user.findMany({
+        where: {
+          role: 'operator',
+          status: 'Online',
+        },
+        include: {
+          lineOperators: {
+            include: {
+              line: true,
+            },
+          },
+        },
+      });
+
+      // Filtrar apenas operadores com linha vinculada
+      const operatorsWithLines = onlineOperators.filter(op => op.lineOperators.length > 0);
+
+      for (const operator of operatorsWithLines) {
+        const lineOperator = operator.lineOperators[0]; // Pegar primeira linha (operador pode ter mais de uma, mas normalmente só uma)
+        const line = lineOperator.line;
+
+        // Verificar status da linha na Evolution
+        const evolution = await this.prisma.evolution.findUnique({
+          where: { evolutionName: line.evolutionName },
+        });
+
+        if (evolution) {
+          const instanceName = `line_${line.phone.replace(/\D/g, '')}`;
+          const lineStatus = await this.healthCheckCacheService.getConnectionStatus(
+            evolution.evolutionUrl,
+            evolution.evolutionKey,
+            instanceName
+          );
+
+          // Se linha está banida ou desconectada, realocar
+          if (!lineStatus || lineStatus === 'ban' || lineStatus === 'disconnected' || lineStatus.toLowerCase() === 'ban' || lineStatus.toLowerCase() === 'disconnected') {
+          this.logger.warn(
+            `Linha ${line.phone} está ${lineStatus?.state || 'desconectada'} na Evolution. Realocando para operador ${operator.name}...`,
+            'LineAvailability',
+            {
+              operatorId: operator.id,
+              operatorName: operator.name,
+              lineId: line.id,
+              linePhone: line.phone,
+              lineStatus: lineStatus?.state || 'unknown',
+            },
+          );
+
+          try {
+            // Desvincular linha banida
+            await this.linesService.unassignOperatorFromLine(line.id, operator.id);
+
+            // Realocar nova linha (mesma regra: mesmo segmento ou "Padrão")
+            const reallocationResult = await this.lineAssignmentService.reallocateLineForOperator(
+              operator.id,
+              operator.segment || null
+            );
+
+            if (reallocationResult.success && reallocationResult.lineId) {
+              const newLine = await this.prisma.linesStock.findUnique({
+                where: { id: reallocationResult.lineId },
+              });
+
+              if (newLine) {
+                this.logger.log(
+                  `Linha ${newLine.phone} realocada automaticamente para operador ${operator.name} após detectar linha banida`,
+                  'LineAvailability',
+                  {
+                    operatorId: operator.id,
+                    operatorName: operator.name,
+                    oldLineId: line.id,
+                    oldLinePhone: line.phone,
+                    newLineId: newLine.id,
+                    newLinePhone: newLine.phone,
+                  },
+                );
+              } else {
+                this.logger.error(
+                  `Linha ${reallocationResult.lineId} não encontrada após realocação para operador ${operator.name}`,
+                  '',
+                  'LineAvailability',
+                  {
+                    operatorId: operator.id,
+                    lineId: reallocationResult.lineId,
+                  },
+                );
+              }
+            } else {
+              this.logger.error(
+                `Não foi possível realocar linha para operador ${operator.name}: ${reallocationResult.reason}`,
+                '',
+                'LineAvailability',
+                {
+                  operatorId: operator.id,
+                  operatorName: operator.name,
+                  oldLineId: line.id,
+                  reason: reallocationResult.reason,
+                },
+              );
+            }
+            } catch (error: any) {
+              this.logger.error(
+                `Erro ao realocar linha para operador ${operator.name}`,
+                error.stack,
+                'LineAvailability',
+                {
+                  operatorId: operator.id,
+                  error: error.message,
+                },
+              );
+            }
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.error(
+        'Erro ao verificar status das linhas dos operadores',
         error.stack,
         'LineAvailability',
         { error: error.message },

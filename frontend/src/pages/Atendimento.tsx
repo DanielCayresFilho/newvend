@@ -97,6 +97,9 @@ export default function Atendimento() {
   } | null>(null);
   const [isRecallingContact, setIsRecallingContact] = useState<string | null>(null);
   
+  // Estado para modo teste administrador (apenas admins)
+  const [isAdminTestMode, setIsAdminTestMode] = useState(false);
+  
   // Estado para templates
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
@@ -663,6 +666,7 @@ export default function Atendimento() {
           messageType,
           mediaUrl,
           fileName: data.originalName || data.fileName, // Incluir nome do arquivo para documentos
+          isAdminTest: isAdminTestMode && user?.role === 'admin',
         });
       } else {
         // Fallback: salvar via REST API
@@ -722,11 +726,12 @@ export default function Atendimento() {
     try {
       // Usar WebSocket para enviar mensagem via WhatsApp (se conectado)
       if (isRealtimeConnected) {
-        console.log('[Atendimento] Enviando mensagem via WebSocket...');
+        console.log('[Atendimento] Enviando mensagem via WebSocket...', { isAdminTestMode });
         realtimeSocket.send('send-message', {
           contactPhone: selectedConversation.contactPhone,
           message: messageText,
           messageType: 'text',
+          isAdminTest: isAdminTestMode && user?.role === 'admin',
         });
         
         // A resposta virá via evento 'message-sent' (sucesso) ou 'message-error' (erro)
@@ -767,7 +772,7 @@ export default function Atendimento() {
       });
     }
     // Não usar finally para WebSocket - o reset será feito via eventos
-  }, [message, selectedConversation, isSending, user, isRealtimeConnected, playSuccessSound, playErrorSound, loadConversations]);
+  }, [message, selectedConversation, isSending, user, isRealtimeConnected, isAdminTestMode, playSuccessSound, playErrorSound, loadConversations]);
 
   const handleTabulate = useCallback(async (tabulationId: number) => {
     if (!selectedConversation) return;
@@ -898,6 +903,7 @@ export default function Atendimento() {
             templateId: selectedTemplateValue.id,
             templateVariables: variables,
             isNewConversation: true,
+            isAdminTest: isAdminTestMode && user?.role === 'admin',
           });
         } else {
           // Enviar mensagem normal
@@ -906,6 +912,7 @@ export default function Atendimento() {
             message: contactMessageValue,
             messageType: 'text',
             isNewConversation: true, // Indica que é 1x1 para verificar permissão
+            isAdminTest: isAdminTestMode && user?.role === 'admin',
           });
         }
 
@@ -1621,6 +1628,34 @@ export default function Atendimento() {
                     className="flex-1"
                     disabled={isSending}
                   />
+                  {user?.role === 'admin' && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex items-center gap-2 mr-2">
+                            <Switch
+                              id="admin-test-mode"
+                              checked={isAdminTestMode}
+                              onCheckedChange={setIsAdminTestMode}
+                              className="data-[state=checked]:bg-amber-500"
+                            />
+                            <Label 
+                              htmlFor="admin-test-mode" 
+                              className={cn(
+                                "text-xs font-medium cursor-pointer",
+                                isAdminTestMode && "text-amber-500 font-bold"
+                              )}
+                            >
+                              🧪 Teste Admin
+                            </Label>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Ativar modo teste administrador - ações não aparecerão nos relatórios</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
                   <Button size="icon" onClick={handleSendMessage} disabled={isSending || !message.trim()}>
                     {isSending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />

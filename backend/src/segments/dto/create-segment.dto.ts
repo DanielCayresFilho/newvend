@@ -1,4 +1,5 @@
-import { IsNotEmpty, IsString, IsBoolean, IsOptional } from 'class-validator';
+import { IsNotEmpty, IsString, IsBoolean, IsOptional, IsEnum } from 'class-validator';
+import { Identifier } from '@prisma/client';
 
 export class CreateSegmentDto {
   @IsString()
@@ -8,4 +9,8 @@ export class CreateSegmentDto {
   @IsBoolean()
   @IsOptional()
   allowsFreeMessage?: boolean;
+
+  @IsEnum(Identifier)
+  @IsOptional()
+  identifier?: Identifier; // cliente ou proprietario - usado para filtrar relatórios
 }

@@ -1,4 +1,4 @@
-import { IsOptional, IsDateString, IsNumber } from 'class-validator';
+import { IsOptional, IsDateString, IsNumber, IsBoolean, IsEnum } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class ReportFilterDto {
@@ -18,5 +18,15 @@ export class ReportFilterDto {
   @IsOptional()
   @IsNumber()
   segment?: number;
+
+  @Transform(({ value }) => {
+    if (value === null || value === undefined || value === '') return undefined;
+    if (value === 'true' || value === true) return true;
+    if (value === 'false' || value === false) return false;
+    return undefined;
+  })
+  @IsOptional()
+  @IsBoolean()
+  onlyMovimentedLines?: boolean; // Para relatório de linhas: true = apenas movimentadas, false/undefined = todas
 }
 

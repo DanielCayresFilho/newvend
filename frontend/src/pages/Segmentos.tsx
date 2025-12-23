@@ -5,6 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { DialogFooter } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import { segmentsService, Segment as APISegment } from "@/services/api";
@@ -15,13 +22,14 @@ interface Segment {
   id: string;
   name: string;
   allowsFreeMessage: boolean;
+  identifier?: 'cliente' | 'proprietario';
 }
 
 export default function Segmentos() {
   const [segments, setSegments] = useState<Segment[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingSegment, setEditingSegment] = useState<Segment | null>(null);
-  const [formData, setFormData] = useState({ name: '', allowsFreeMessage: true });
+  const [formData, setFormData] = useState({ name: '', allowsFreeMessage: true, identifier: 'proprietario' as 'cliente' | 'proprietario' });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -31,6 +39,7 @@ export default function Segmentos() {
     id: apiSegment.id.toString(),
     name: apiSegment.name,
     allowsFreeMessage: apiSegment.allowsFreeMessage ?? true,
+    identifier: (apiSegment as any).identifier || 'proprietario',
   });
 
   const loadSegments = useCallback(async () => {
@@ -74,13 +83,13 @@ export default function Segmentos() {
 
   const handleAdd = () => {
     setEditingSegment(null);
-    setFormData({ name: '', allowsFreeMessage: true });
+    setFormData({ name: '', allowsFreeMessage: true, identifier: 'proprietario' });
     setIsFormOpen(true);
   };
 
   const handleEdit = (segment: Segment) => {
     setEditingSegment(segment);
-    setFormData({ name: segment.name, allowsFreeMessage: segment.allowsFreeMessage });
+    setFormData({ name: segment.name, allowsFreeMessage: segment.allowsFreeMessage, identifier: segment.identifier || 'proprietario' });
     setIsFormOpen(true);
   };
 
@@ -114,14 +123,14 @@ export default function Segmentos() {
     setIsSaving(true);
     try {
       if (editingSegment) {
-        const updated = await segmentsService.update(parseInt(editingSegment.id), formData.name.trim(), formData.allowsFreeMessage);
+        const updated = await segmentsService.update(parseInt(editingSegment.id), formData.name.trim(), formData.allowsFreeMessage, formData.identifier);
         setSegments(segments.map(s => s.id === editingSegment.id ? mapApiToLocal(updated) : s));
         toast({
           title: "Segmento atualizado",
           description: "Segmento atualizado com sucesso",
         });
       } else {
-        const created = await segmentsService.create(formData.name.trim(), formData.allowsFreeMessage);
+        const created = await segmentsService.create(formData.name.trim(), formData.allowsFreeMessage, formData.identifier);
         setSegments([...segments, mapApiToLocal(created)]);
         toast({
           title: "Segmento criado",
@@ -208,6 +217,21 @@ export default function Segmentos() {
         {formData.allowsFreeMessage 
           ? "Operadores deste segmento podem enviar qualquer mensagem no 1x1"
           : "Operadores deste segmento só podem enviar mensagens através de templates no 1x1"}
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="identifier">Identificador</Label>
+        <Select value={formData.identifier} onValueChange={(value: 'cliente' | 'proprietario') => setFormData({ ...formData, identifier: value })}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="proprietario">Proprietário (vê todos os dados)</SelectItem>
+            <SelectItem value="cliente">Cliente (vê apenas seus dados)</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Cliente só vê seus dados nos relatórios. Proprietário vê tudo.
+        </p>
       </div>
       <DialogFooter>
         <Button variant="outline" onClick={() => setIsFormOpen(false)} disabled={isSaving}>

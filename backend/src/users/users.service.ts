@@ -55,6 +55,7 @@ export class UsersService {
         line: true,
         status: true,
         oneToOneActive: true,
+        identifier: true,
         createdAt: true,
         updatedAt: true,
         // Não retornar password
@@ -122,6 +123,7 @@ export class UsersService {
         line: true,
         status: true,
         oneToOneActive: true,
+        identifier: true,
         createdAt: true,
         updatedAt: true,
         // Não retornar password
@@ -181,6 +183,7 @@ export class UsersService {
         status: operator.status,
         lines: lines,
         oneToOneActive: operator.oneToOneActive,
+        identifier: operator.identifier,
         createdAt: operator.createdAt,
         updatedAt: operator.updatedAt,
       };

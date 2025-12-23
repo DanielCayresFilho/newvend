@@ -1,5 +1,5 @@
 import { IsBoolean, IsEmail, IsEnum, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
-import { Role, Status } from '@prisma/client';
+import { Role, Status, Identifier } from '@prisma/client';
 import { Transform } from 'class-transformer';
 
 export class UpdateUserDto {
@@ -59,4 +59,8 @@ export class UpdateUserDto {
   @IsBoolean()
   @IsOptional()
   oneToOneActive?: boolean; // Se true, operador pode chamar clientes no 1x1
+
+  @IsEnum(Identifier)
+  @IsOptional()
+  identifier?: Identifier; // cliente ou proprietario - usado para filtrar relatórios
 }

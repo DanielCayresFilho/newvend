@@ -37,6 +37,11 @@ enum Speed {
   slow
 }
 
+enum Identifier {
+  cliente
+  proprietario
+}
+
 // Models
 model User {
   id             Int      @id @default(autoincrement())
@@ -48,6 +53,7 @@ model User {
   line           Int? // Mantido para compatibilidade (deprecated - usar LineOperators)
   status         Status   @default(Offline)
   oneToOneActive Boolean  @default(true) // Se true, operador pode chamar clientes no 1x1
+  identifier     Identifier @default(proprietario) // cliente ou proprietario - usado para filtrar relatórios
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -59,6 +65,7 @@ model User {
   @@index([segment])
   @@index([line])
   @@index([role, status])
+  @@index([identifier])
 
   systemEvents SystemEvent[]
 }
@@ -67,12 +74,14 @@ model Segment {
   id               Int      @id @default(autoincrement())
   name             String   @unique
   allowsFreeMessage Boolean @default(true) // Se true, permite mensagens livres no 1x1. Se false, só permite templates.
+  identifier       Identifier @default(proprietario) // cliente ou proprietario - usado para filtrar relatórios
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
   queueEntries     OperatorQueue[] @relation("OperatorQueueSegment") // Entradas na fila de espera deste segmento
 
   @@index([name])
+  @@index([identifier])
 }
 
 model Tabulation {
@@ -118,6 +127,7 @@ model Campaign {
   templateId        Int?
   templateVariables String?   @db.Text
   endTime           DateTime? // Horário limite para envio das mensagens
+  isAdminTest       Boolean   @default(false) // Se true, é ação de teste administrador e não aparece nos relatórios
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -215,6 +225,7 @@ model Conversation {
   mediaUrl     String?
   archived     Boolean   @default(false) // Se true, conversa foi arquivada
   archivedAt   DateTime? // Data de arquivamento
+  isAdminTest  Boolean   @default(false) // Se true, é ação de teste administrador e não aparece nos relatórios
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 

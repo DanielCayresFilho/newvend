@@ -107,6 +107,7 @@ export interface CreateUserData {
   line?: number;
   status?: 'Online' | 'Offline';
   oneToOneActive?: boolean;
+  identifier?: 'cliente' | 'proprietario';
 }
 
 export interface UpdateUserData {
@@ -118,6 +119,7 @@ export interface UpdateUserData {
   line?: number | null;
   status?: 'Online' | 'Offline';
   oneToOneActive?: boolean;
+  identifier?: 'cliente' | 'proprietario';
 }
 
 export const usersService = {
@@ -194,17 +196,20 @@ export const segmentsService = {
     return apiRequest<Segment>(`/segments/${id}`);
   },
 
-  create: async (name: string, allowsFreeMessage: boolean = true): Promise<Segment> => {
+  create: async (name: string, allowsFreeMessage: boolean = true, identifier?: 'cliente' | 'proprietario'): Promise<Segment> => {
     return apiRequest<Segment>('/segments', {
       method: 'POST',
-      body: JSON.stringify({ name, allowsFreeMessage }),
+      body: JSON.stringify({ name, allowsFreeMessage, identifier }),
     });
   },
 
-  update: async (id: number, name: string, allowsFreeMessage?: boolean): Promise<Segment> => {
+  update: async (id: number, name: string, allowsFreeMessage?: boolean, identifier?: 'cliente' | 'proprietario'): Promise<Segment> => {
     const body: any = { name };
     if (allowsFreeMessage !== undefined) {
       body.allowsFreeMessage = allowsFreeMessage;
+    }
+    if (identifier !== undefined) {
+      body.identifier = identifier;
     }
     return apiRequest<Segment>(`/segments/${id}`, {
       method: 'PATCH',
@@ -957,6 +962,7 @@ export interface ReportParams {
   endDate: string;
   segment?: number;
   type: string;
+  onlyMovimentedLines?: boolean;
 }
 
 // Mapeamento de tipos de relatório para endpoints
@@ -1020,6 +1026,7 @@ export const reportsService = {
     if (params.startDate) queryParams.append('startDate', params.startDate);
     if (params.endDate) queryParams.append('endDate', params.endDate);
     if (params.segment) queryParams.append('segment', params.segment.toString());
+    if (params.onlyMovimentedLines !== undefined) queryParams.append('onlyMovimentedLines', params.onlyMovimentedLines.toString());
 
     const url = `${API_BASE_URL}/reports/${endpoint}?${queryParams.toString()}`;
     

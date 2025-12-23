@@ -29,6 +29,7 @@ interface User {
   lineEvolutionName?: string;
   isOnline: boolean;
   oneToOneActive?: boolean;
+  identifier?: 'cliente' | 'proprietario';
 }
 
 const roleColors = {
@@ -84,7 +85,8 @@ export default function Usuarios() {
     role: 'operador', 
     segment: '',
     line: '',
-    oneToOneActive: false
+    oneToOneActive: false,
+    identifier: 'proprietario' as 'cliente' | 'proprietario'
   });
 
   // Load data on mount
@@ -113,7 +115,8 @@ export default function Usuarios() {
           lineName: userLine?.phone,
           lineEvolutionName: userLine?.evolutionName,
           isOnline: u.status === 'Online',
-          oneToOneActive: u.oneToOneActive ?? false
+          oneToOneActive: u.oneToOneActive ?? false,
+          identifier: (u as any).identifier || 'proprietario'
         };
       }));
 
@@ -170,7 +173,7 @@ export default function Usuarios() {
 
   const handleAdd = () => {
     setEditingUser(null);
-    setFormData({ name: '', email: '', password: '', role: 'operador', segment: '', line: '', oneToOneActive: false });
+    setFormData({ name: '', email: '', password: '', role: 'operador', segment: '', line: '', oneToOneActive: false, identifier: 'proprietario' });
     setIsFormOpen(true);
   };
 
@@ -183,7 +186,8 @@ export default function Usuarios() {
       role: user.role, 
       segment: user.segment ? String(user.segment) : '',
       line: user.line ? String(user.line) : '',
-      oneToOneActive: user.oneToOneActive ?? false
+      oneToOneActive: user.oneToOneActive ?? false,
+      identifier: user.identifier || 'proprietario'
     });
     setIsFormOpen(true);
   };
@@ -235,6 +239,7 @@ export default function Usuarios() {
           segment: formData.segment ? Number(formData.segment) : null,
           line: formData.line ? Number(formData.line) : null,
           oneToOneActive: formData.oneToOneActive,
+          identifier: formData.identifier,
         };
         if (formData.password) {
           updateData.password = formData.password;
@@ -254,7 +259,8 @@ export default function Usuarios() {
               lineName: userLine?.phone,
               lineEvolutionName: userLine?.evolutionName,
               isOnline: updated.status === 'Online',
-              oneToOneActive: updated.oneToOneActive ?? false
+              oneToOneActive: updated.oneToOneActive ?? false,
+              identifier: (updated as any).identifier || 'proprietario'
             };
           }
           return u;
@@ -272,6 +278,7 @@ export default function Usuarios() {
           segment: formData.segment ? Number(formData.segment) : undefined,
           line: formData.line ? Number(formData.line) : undefined,
           oneToOneActive: formData.oneToOneActive,
+          identifier: formData.identifier,
         });
         const newUserLine = lines.find(l => l.id === created.line);
         setUsers([...users, {
@@ -284,7 +291,8 @@ export default function Usuarios() {
           lineName: newUserLine?.phone,
           lineEvolutionName: newUserLine?.evolutionName,
           isOnline: created.status === 'Online',
-          oneToOneActive: created.oneToOneActive ?? false
+          oneToOneActive: created.oneToOneActive ?? false,
+          identifier: (created as any).identifier || 'proprietario'
         }]);
         toast({
           title: "Usuário criado",

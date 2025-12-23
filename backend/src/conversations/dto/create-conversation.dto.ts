@@ -1,4 +1,4 @@
-import { IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 import { Sender } from '@prisma/client';
 
 export class CreateConversationDto {
@@ -45,4 +45,8 @@ export class CreateConversationDto {
   @IsString()
   @IsOptional()
   mediaUrl?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  isAdminTest?: boolean; // Se true, é ação de teste administrador e não aparece nos relatórios
 }

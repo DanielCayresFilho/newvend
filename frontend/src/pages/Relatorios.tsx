@@ -52,6 +52,7 @@ export default function Relatorios() {
   const [isLoading, setIsLoading] = useState(false);
   const [reportGenerated, setReportGenerated] = useState(false);
   const [reportBlob, setReportBlob] = useState<Blob | null>(null);
+  const [onlyMovimentedLines, setOnlyMovimentedLines] = useState(false); // Para relatório de linhas
 
   const loadSegments = useCallback(async () => {
     try {
@@ -95,6 +96,7 @@ export default function Relatorios() {
         endDate,
         segment: segment && segment !== 'all' ? parseInt(segment) : undefined,
         type: reportType,
+        onlyMovimentedLines: reportType === 'linhas' ? onlyMovimentedLines : undefined,
       });
       
       setReportBlob(blob);
@@ -208,6 +210,22 @@ export default function Relatorios() {
               ))}
             </div>
           </div>
+          
+          {/* Opção adicional para relatório de linhas */}
+          {reportType === 'linhas' && (
+            <div className="mt-4 flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="onlyMovimentedLines"
+                checked={onlyMovimentedLines}
+                onChange={(e) => setOnlyMovimentedLines(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300"
+              />
+              <Label htmlFor="onlyMovimentedLines" className="text-sm font-normal cursor-pointer">
+                Apenas linhas movimentadas (com conversas/campanhas no período)
+              </Label>
+            </div>
+          )}
         </GlassCard>
 
         {/* Results */}

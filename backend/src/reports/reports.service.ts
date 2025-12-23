@@ -46,6 +46,122 @@ export class ReportsService {
   }
 
   /**
+   * Helper: Aplicar filtro de identificador
+   * Cliente só vê seus dados, proprietário vê tudo
+   * SEMPRE filtra isAdminTest = false (ações de teste administrador não aparecem nos relatórios)
+   */
+  private async applyIdentifierFilter(
+    whereClause: any,
+    userIdentifier: 'cliente' | 'proprietario' | undefined,
+    filterType: 'conversation' | 'campaign' | 'user' | 'segment' | 'line'
+  ): Promise<any> {
+    // SEMPRE filtrar ações de teste administrador (não aparecem nos relatórios)
+    if (filterType === 'conversation' || filterType === 'campaign') {
+      whereClause.isAdminTest = false;
+    }
+
+    // Se não tem identificador ou é proprietário, não aplicar filtro adicional
+    if (!userIdentifier || userIdentifier === 'proprietario') {
+      return whereClause;
+    }
+
+    // Se é cliente, aplicar filtro
+    if (userIdentifier === 'cliente') {
+      if (filterType === 'conversation') {
+        // Para conversas: filtrar por segmento OU usuário com identifier = 'cliente'
+        const clienteSegments = await this.prisma.segment.findMany({
+          where: { identifier: 'cliente' },
+          select: { id: true },
+        });
+        const clienteSegmentIds = clienteSegments.map(s => s.id);
+
+        const clienteUsers = await this.prisma.user.findMany({
+          where: { identifier: 'cliente' },
+          select: { id: true },
+        });
+        const clienteUserIds = clienteUsers.map(u => u.id);
+
+        // Se já existe filtro de segment, verificar se é cliente
+        if (whereClause.segment) {
+          if (!clienteSegmentIds.includes(whereClause.segment)) {
+            // Segmento filtrado não é cliente, retornar where impossível
+            return { id: -1 }; // Filtro impossível
+          }
+          // Segmento é cliente, manter filtro existente mas também adicionar filtro por userId
+          if (clienteUserIds.length > 0) {
+            // Adicionar filtro OR para incluir conversas de usuários clientes também
+            const existingSegment = whereClause.segment;
+            whereClause.OR = [
+              { segment: existingSegment },
+              { userId: { in: clienteUserIds } },
+            ];
+            delete whereClause.segment; // Remover filtro direto, usar OR
+          }
+        } else {
+          // Não tem filtro de segment, aplicar filtro de cliente
+          const orConditions = [];
+          if (clienteSegmentIds.length > 0) {
+            orConditions.push({ segment: { in: clienteSegmentIds } });
+          }
+          if (clienteUserIds.length > 0) {
+            orConditions.push({ userId: { in: clienteUserIds } });
+          }
+          
+          if (orConditions.length === 0) {
+            return { id: -1 }; // Nenhum dado cliente encontrado
+          }
+          
+          whereClause.OR = orConditions;
+        }
+      } else if (filterType === 'campaign') {
+        // Para campanhas: filtrar por segmento com identifier = 'cliente'
+        const clienteSegments = await this.prisma.segment.findMany({
+          where: { identifier: 'cliente' },
+          select: { id: true },
+        });
+        const clienteSegmentIds = clienteSegments.map(s => s.id);
+
+        if (whereClause.contactSegment) {
+          if (!clienteSegmentIds.includes(whereClause.contactSegment)) {
+            return { id: -1 }; // Filtro impossível
+          }
+        } else {
+          whereClause.contactSegment = clienteSegmentIds.length > 0 ? { in: clienteSegmentIds } : null;
+          if (whereClause.contactSegment === null) {
+            return { id: -1 }; // Nenhum segmento cliente encontrado
+          }
+        }
+      } else if (filterType === 'user') {
+        // Para usuários: filtrar por identifier = 'cliente'
+        whereClause.identifier = 'cliente';
+      } else if (filterType === 'segment') {
+        // Para segmentos: filtrar por identifier = 'cliente'
+        whereClause.identifier = 'cliente';
+      } else if (filterType === 'line') {
+        // Para linhas: filtrar por segmento com identifier = 'cliente'
+        const clienteSegments = await this.prisma.segment.findMany({
+          where: { identifier: 'cliente' },
+          select: { id: true },
+        });
+        const clienteSegmentIds = clienteSegments.map(s => s.id);
+
+        if (whereClause.segment) {
+          if (!clienteSegmentIds.includes(whereClause.segment)) {
+            return { id: -1 }; // Filtro impossível
+          }
+        } else {
+          whereClause.segment = clienteSegmentIds.length > 0 ? { in: clienteSegmentIds } : null;
+          if (whereClause.segment === null) {
+            return { id: -1 }; // Nenhum segmento cliente encontrado
+          }
+        }
+      }
+    }
+
+    return whereClause;
+  }
+
+  /**
    * Helper: Normalizar texto para garantir encoding UTF-8 correto
    * Remove problemas de encoding e garante que caracteres especiais sejam exibidos corretamente
    */
@@ -126,7 +242,7 @@ export class ReportsService {
    * Qtd. Promessas, Conversão, Tempo Médio Transbordo, Tempo Médio Espera Total, 
    * Tempo Médio Atendimento, Tempo Médio Resposta
    */
-  async getOpSinteticoReport(filters: ReportFilterDto) {
+  async getOpSinteticoReport(filters: ReportFilterDto, userIdentifier?: 'cliente' | 'proprietario') {
     console.log('📊 [Reports] OP Sintético - Filtros:', JSON.stringify(filters));
     
     const whereClause: any = {};
@@ -145,10 +261,13 @@ export class ReportsService {
       }
     }
 
-    console.log('📊 [Reports] OP Sintético - Where:', JSON.stringify(whereClause));
+    // Aplicar filtro de identificador
+    const finalWhereClause = await this.applyIdentifierFilter(whereClause, userIdentifier, 'conversation');
+
+    console.log('📊 [Reports] OP Sintético - Where:', JSON.stringify(finalWhereClause));
 
     const conversations = await this.prisma.conversation.findMany({
-      where: whereClause,
+      where: finalWhereClause,
       orderBy: { datetime: 'asc' },
     });
 
@@ -238,7 +357,7 @@ export class ReportsService {
    * Email Principal, Canal, Carteiras, Carteira do Evento, Valor da oportunidade, 
    * Identificador da chamada de Voz
    */
-  async getKpiReport(filters: ReportFilterDto) {
+  async getKpiReport(filters: ReportFilterDto, userIdentifier?: 'cliente' | 'proprietario') {
     console.log('📊 [Reports] KPI - Filtros:', JSON.stringify(filters));
     
     const whereClause: any = {
@@ -259,10 +378,13 @@ export class ReportsService {
       }
     }
 
-    console.log('📊 [Reports] KPI - Where:', JSON.stringify(whereClause));
+    // Aplicar filtro de identificador
+    const finalWhereClause = await this.applyIdentifierFilter(whereClause, userIdentifier, 'conversation');
+
+    console.log('📊 [Reports] KPI - Where:', JSON.stringify(finalWhereClause));
 
     const conversations = await this.prisma.conversation.findMany({
-      where: whereClause,
+      where: finalWhereClause,
       orderBy: { datetime: 'desc' },
     });
 
@@ -341,7 +463,7 @@ export class ReportsService {
    * Solicitação envio, Envio, Confirmação, Leitura (se habilitado), Falha entrega, 
    * Motivo falha, WhatsApp de saida, Usuário Solicitante, Carteira, Teve retorno
    */
-  async getHsmReport(filters: ReportFilterDto) {
+  async getHsmReport(filters: ReportFilterDto, userIdentifier?: 'cliente' | 'proprietario') {
     const whereClause: any = {};
 
     if (filters.segment) {
@@ -358,10 +480,13 @@ export class ReportsService {
       }
     }
 
-    console.log('📊 [Reports] HSM - Where:', JSON.stringify(whereClause));
+    // Aplicar filtro de identificador
+    const finalWhereClause = await this.applyIdentifierFilter(whereClause, userIdentifier, 'campaign');
+
+    console.log('📊 [Reports] HSM - Where:', JSON.stringify(finalWhereClause));
 
     const campaigns = await this.prisma.campaign.findMany({
-      where: whereClause,
+      where: finalWhereClause,
       orderBy: { dateTime: 'desc' },
     });
 
@@ -430,15 +555,18 @@ export class ReportsService {
    * RELATÓRIO STATUS DE LINHA
    * Estrutura: Data, Numero, Business, QualityScore, Tier, Segmento
    */
-  async getLineStatusReport(filters: ReportFilterDto) {
+  async getLineStatusReport(filters: ReportFilterDto, userIdentifier?: 'cliente' | 'proprietario') {
     const whereClause: any = {};
 
     if (filters.segment) {
       whereClause.segment = filters.segment;
     }
 
+    // Aplicar filtro de identificador
+    const finalWhereClause = await this.applyIdentifierFilter(whereClause, userIdentifier, 'line');
+
     const lines = await this.prisma.linesStock.findMany({
-      where: whereClause,
+      where: finalWhereClause,
       orderBy: { updatedAt: 'desc' },
     });
 
@@ -468,7 +596,7 @@ export class ReportsService {
    * numero_saida, login_usuario, template_envio, coringa_1, coringa_2, coringa_3, 
    * coringa_4, tipo_envio
    */
-  async getEnviosReport(filters: ReportFilterDto) {
+  async getEnviosReport(filters: ReportFilterDto, userIdentifier?: 'cliente' | 'proprietario') {
     const whereClause: any = {};
 
     if (filters.segment) {
@@ -485,9 +613,12 @@ export class ReportsService {
       }
     }
 
+    // Aplicar filtro de identificador para campanhas
+    const finalCampaignWhere = await this.applyIdentifierFilter(whereClause, userIdentifier, 'campaign');
+
     // Buscar campanhas (envios massivos)
     const campaigns = await this.prisma.campaign.findMany({
-      where: whereClause,
+      where: finalCampaignWhere,
       orderBy: { dateTime: 'desc' },
     });
 
@@ -508,8 +639,11 @@ export class ReportsService {
       }
     }
 
+    // Aplicar filtro de identificador para conversas
+    const finalConversationWhere = await this.applyIdentifierFilter(conversationWhere, userIdentifier, 'conversation');
+
     const conversations = await this.prisma.conversation.findMany({
-      where: conversationWhere,
+      where: finalConversationWhere,
       orderBy: { datetime: 'desc' },
     });
 
@@ -598,7 +732,7 @@ export class ReportsService {
    * boleto, valor, transbordo, primeira_opcao_oferta, segunda_via, nota_nps, obs_nps, 
    * erro_api, abandono, protocolo
    */
-  async getIndicadoresReport(filters: ReportFilterDto) {
+  async getIndicadoresReport(filters: ReportFilterDto, userIdentifier?: 'cliente' | 'proprietario') {
     const whereClause: any = {};
 
     if (filters.segment) {
@@ -615,8 +749,11 @@ export class ReportsService {
       }
     }
 
+    // Aplicar filtro de identificador
+    const finalWhereClause = await this.applyIdentifierFilter(whereClause, userIdentifier, 'conversation');
+
     const conversations = await this.prisma.conversation.findMany({
-      where: whereClause,
+      where: finalWhereClause,
       orderBy: { datetime: 'asc' },
     });
 
@@ -702,7 +839,7 @@ export class ReportsService {
    * cpf, telefone, login, evento, evento_normalizado, tma, tmc, tmpro, tmf, tmrc, 
    * tmro, protocolo
    */
-  async getTemposReport(filters: ReportFilterDto) {
+  async getTemposReport(filters: ReportFilterDto, userIdentifier?: 'cliente' | 'proprietario') {
     const whereClause: any = {};
 
     if (filters.segment) {
@@ -719,8 +856,11 @@ export class ReportsService {
       }
     }
 
+    // Aplicar filtro de identificador
+    const finalWhereClause = await this.applyIdentifierFilter(whereClause, userIdentifier, 'conversation');
+
     const conversations = await this.prisma.conversation.findMany({
-      where: whereClause,
+      where: finalWhereClause,
       orderBy: [
         { contactPhone: 'asc' },
         { datetime: 'asc' },
@@ -795,7 +935,7 @@ export class ReportsService {
    * Conteúdo do Disparo Inicial, Carteira, WhatsApp Saída, Quantidade de Disparos,
    * Enviado, Confirmado, Leitura, Falha, Interação
    */
-  async getTemplatesReport(filters: ReportFilterDto) {
+  async getTemplatesReport(filters: ReportFilterDto, userIdentifier?: 'cliente' | 'proprietario') {
     const whereClause: any = {};
 
     if (filters.segment) {
@@ -871,7 +1011,7 @@ export class ReportsService {
    * Nome do Operador, Tabulação, Status, Primeiro Atendimento, Último Atendimento,
    * Enviado, Confirmado, Leitura, Falha, Interação
    */
-  async getCompletoCsvReport(filters: ReportFilterDto) {
+  async getCompletoCsvReport(filters: ReportFilterDto, userIdentifier?: 'cliente' | 'proprietario') {
     const whereClause: any = {};
 
     if (filters.segment) {
@@ -888,8 +1028,11 @@ export class ReportsService {
       }
     }
 
+    // Aplicar filtro de identificador
+    const finalWhereClause = await this.applyIdentifierFilter(whereClause, userIdentifier, 'conversation');
+
     const conversations = await this.prisma.conversation.findMany({
-      where: whereClause,
+      where: finalWhereClause,
       orderBy: { datetime: 'asc' },
     });
 
@@ -952,7 +1095,7 @@ export class ReportsService {
    * RELATÓRIO DE EQUIPE
    * Estrutura: id, Operador, Quantidade de Mensagens, Carteira
    */
-  async getEquipeReport(filters: ReportFilterDto) {
+  async getEquipeReport(filters: ReportFilterDto, userIdentifier?: 'cliente' | 'proprietario') {
     const whereClause: any = {
       sender: 'operator',
     };
@@ -971,8 +1114,11 @@ export class ReportsService {
       }
     }
 
+    // Aplicar filtro de identificador
+    const finalWhereClause = await this.applyIdentifierFilter(whereClause, userIdentifier, 'conversation');
+
     const conversations = await this.prisma.conversation.findMany({
-      where: whereClause,
+      where: finalWhereClause,
       orderBy: { datetime: 'desc' },
     });
 
@@ -1025,7 +1171,7 @@ export class ReportsService {
    * Dispositivo Disparo, Segmento do Dispositivo, E-mail Operador, Data de Disparo,
    * Dispositivo Recebido, Enviado, Confirmado, Leitura, Falha, Interação
    */
-  async getDadosTransacionadosReport(filters: ReportFilterDto) {
+  async getDadosTransacionadosReport(filters: ReportFilterDto, userIdentifier?: 'cliente' | 'proprietario') {
     const whereClause: any = {};
 
     if (filters.segment) {
@@ -1115,7 +1261,7 @@ export class ReportsService {
    * Telefone do Cliente, Segmento, Hora da Mensagem, Mensagem Transcrita,
    * Quem Enviou a Mensagem, Finalização
    */
-  async getDetalhadoConversasReport(filters: ReportFilterDto) {
+  async getDetalhadoConversasReport(filters: ReportFilterDto, userIdentifier?: 'cliente' | 'proprietario') {
     const whereClause: any = {};
 
     if (filters.segment) {
@@ -1132,8 +1278,11 @@ export class ReportsService {
       }
     }
 
+    // Aplicar filtro de identificador
+    const finalWhereClause = await this.applyIdentifierFilter(whereClause, userIdentifier, 'conversation');
+
     const conversations = await this.prisma.conversation.findMany({
-      where: whereClause,
+      where: finalWhereClause,
       orderBy: [
         { contactPhone: 'asc' },
         { datetime: 'asc' },
@@ -1193,14 +1342,17 @@ export class ReportsService {
 
   /**
    * RELATÓRIO DE LINHAS
-   * Estrutura: id, Número, Status, Segmento, Operador Vinculado, Data de Transferência
+   * Estrutura: id, Número, Status, Segmento, Operador Vinculado, Data de Cadastro, Data de Atualização
+   * Opções:
+   * - onlyMovimentedLines = false/undefined: Todas as linhas (mostra data cadastro e atualização)
+   * - onlyMovimentedLines = true: Apenas linhas movimentadas (com conversas/campanhas no período ou mudança de status)
    */
-  async getLinhasReport(filters: ReportFilterDto) {
-    // Log para debug - verificar se as datas estão chegando corretamente
+  async getLinhasReport(filters: ReportFilterDto, userIdentifier?: 'cliente' | 'proprietario') {
     console.log('[Reports] getLinhasReport - Filtros recebidos:', {
       startDate: filters.startDate,
       endDate: filters.endDate,
       segment: filters.segment,
+      onlyMovimentedLines: filters.onlyMovimentedLines,
     });
 
     const whereClause: any = {};
@@ -1226,11 +1378,72 @@ export class ReportsService {
       }
     }
 
+    // Aplicar filtro de identificador
+    const finalWhereClause = await this.applyIdentifierFilter(whereClause, userIdentifier, 'line');
+
     // Buscar todas as linhas com filtros de segmento
-    const lines = await this.prisma.linesStock.findMany({
-      where: whereClause,
+    let lines = await this.prisma.linesStock.findMany({
+      where: finalWhereClause,
       orderBy: { createdAt: 'asc' },
     });
+
+    // Se onlyMovimentedLines = true, filtrar apenas linhas que foram movimentadas
+    if (filters.onlyMovimentedLines === true) {
+      const lineIds = lines.map(l => l.id);
+      
+      // Preparar filtros de data para buscar movimentações
+      const dateFilter: any = {};
+      if (filters.startDate || filters.endDate) {
+        if (filters.startDate) {
+          dateFilter.gte = new Date(`${filters.startDate}T00:00:00.000Z`);
+        }
+        if (filters.endDate) {
+          dateFilter.lte = new Date(`${filters.endDate}T23:59:59.999Z`);
+        }
+      }
+
+      // Buscar conversas que usaram essas linhas no período
+      const conversationsInPeriod = await this.prisma.conversation.findMany({
+        where: {
+          userLine: { in: lineIds },
+          isAdminTest: false, // Excluir testes administrador
+          ...(Object.keys(dateFilter).length > 0 && { datetime: dateFilter }),
+        },
+        select: { userLine: true },
+        distinct: ['userLine'],
+      });
+
+      // Buscar campanhas que usaram essas linhas no período
+      const campaignsInPeriod = await this.prisma.campaign.findMany({
+        where: {
+          lineReceptor: { in: lineIds },
+          isAdminTest: false, // Excluir testes administrador
+          ...(Object.keys(dateFilter).length > 0 && { dateTime: dateFilter }),
+        },
+        select: { lineReceptor: true },
+        distinct: ['lineReceptor'],
+      });
+
+      // Buscar linhas que mudaram de status (banidas) no período
+      const linesStatusChanged = await this.prisma.linesStock.findMany({
+        where: {
+          id: { in: lineIds },
+          ...(Object.keys(dateFilter).length > 0 && { updatedAt: dateFilter }),
+        },
+        select: { id: true },
+      });
+
+      // Combinar todas as linhas movimentadas
+      const movimentedLineIds = new Set<number>();
+      conversationsInPeriod.forEach(c => { if (c.userLine) movimentedLineIds.add(c.userLine); });
+      campaignsInPeriod.forEach(c => { if (c.lineReceptor) movimentedLineIds.add(c.lineReceptor); });
+      linesStatusChanged.forEach(l => movimentedLineIds.add(l.id));
+
+      // Filtrar apenas linhas movimentadas
+      lines = lines.filter(l => movimentedLineIds.has(l.id));
+      
+      console.log(`[Reports] Linhas movimentadas encontradas: ${lines.length} de ${lineIds.length} totais`);
+    }
 
     const segments = await this.prisma.segment.findMany();
     const segmentMap = new Map(segments.map(s => [s.id, s]));
@@ -1319,41 +1532,61 @@ export class ReportsService {
       }
     });
 
-    // Filtrar linhas: se houver filtro de data, incluir apenas linhas cuja primeira transferência está no período
+    // Se onlyMovimentedLines = false/undefined, mostrar TODAS as linhas (apenas aplicar filtro de data se houver)
+    // Se onlyMovimentedLines = true, já filtramos acima para mostrar apenas movimentadas
+    
     let filteredLines = lines;
-    if (filterStartDate || filterEndDate) {
+    
+    // Aplicar filtro de data apenas se não for onlyMovimentedLines (pois já filtramos por movimento acima)
+    if ((filterStartDate || filterEndDate) && filters.onlyMovimentedLines !== true) {
       filteredLines = lines.filter(line => {
-        const transferDate = firstTransferDateByLine.get(line.id);
-        if (!transferDate) {
-          // Se não tem transferência, usar createdAt da linha
-          const lineDate = line.createdAt;
-          if (filterStartDate && lineDate < filterStartDate) return false;
-          if (filterEndDate && lineDate > filterEndDate) return false;
-          return true;
-        }
-        // Verificar se a primeira transferência está no período
-        if (filterStartDate && transferDate < filterStartDate) return false;
-        if (filterEndDate && transferDate > filterEndDate) return false;
-        return true;
+        // Verificar se createdAt ou updatedAt está no período
+        const createdInPeriod = !filterStartDate || line.createdAt >= filterStartDate;
+        const createdBeforeEnd = !filterEndDate || line.createdAt <= filterEndDate;
+        const updatedInPeriod = !filterStartDate || line.updatedAt >= filterStartDate;
+        const updatedBeforeEnd = !filterEndDate || line.updatedAt <= filterEndDate;
+        
+        // Incluir se criada ou atualizada no período
+        return (createdInPeriod && createdBeforeEnd) || (updatedInPeriod && updatedBeforeEnd);
       });
     }
 
     const result = filteredLines.map(line => {
       const segment = line.segment ? segmentMap.get(line.segment) : null;
-      // Usar a primeira data de transferência, ou createdAt da linha se não houver transferência
-      const transferDate = firstTransferDateByLine.get(line.id) || line.createdAt;
+      
+      // Pegar operadores vinculados (se houver)
+      const operators = operatorsByLine.get(line.id) || [];
+      const operatorNames = operators.map((op: any) => op.user.name).join(', ') || null;
 
-      return {
-        Carteira: this.normalizeText(segment?.name) || 'Sem segmento',
-        Número: line.phone,
-        Blindado: line.lineStatus === 'ban' ? 'Sim' : line.lineStatus === 'active' ? 'Não' : 'Desconhecido',
-        'Data de Transferencia': this.formatDateTime(transferDate),
-        // Campo auxiliar para ordenação
-        _sortDate: transferDate,
-      };
+      // Se onlyMovimentedLines = true, usar data de primeira movimentação ou updatedAt
+      // Se onlyMovimentedLines = false/undefined, mostrar createdAt e updatedAt
+      if (filters.onlyMovimentedLines === true) {
+        const transferDate = firstTransferDateByLine.get(line.id) || line.updatedAt;
+        return {
+          Carteira: this.normalizeText(segment?.name) || 'Sem segmento',
+          Número: line.phone,
+          Status: line.lineStatus === 'ban' ? 'Banida' : line.lineStatus === 'active' ? 'Ativa' : 'Desconhecido',
+          'Operador Vinculado': this.normalizeText(operatorNames) || 'Sem operador',
+          'Data de Movimentação': this.formatDateTime(transferDate),
+          // Campo auxiliar para ordenação
+          _sortDate: transferDate,
+        };
+      } else {
+        // Mostrar todas as linhas com data de cadastro e atualização
+        return {
+          Carteira: this.normalizeText(segment?.name) || 'Sem segmento',
+          Número: line.phone,
+          Status: line.lineStatus === 'ban' ? 'Banida' : line.lineStatus === 'active' ? 'Ativa' : 'Desconhecido',
+          'Operador Vinculado': this.normalizeText(operatorNames) || 'Sem operador',
+          'Data de Cadastro': this.formatDateTime(line.createdAt),
+          'Data de Atualização': this.formatDateTime(line.updatedAt),
+          // Campo auxiliar para ordenação
+          _sortDate: line.updatedAt,
+        };
+      }
     });
 
-    // Ordenar por data de transferência ASC
+    // Ordenar por data (updatedAt para todas, ou data de movimentação para apenas movimentadas)
     result.sort((a, b) => a._sortDate.getTime() - b._sortDate.getTime());
 
     // Remover campo auxiliar de ordenação
@@ -1368,7 +1601,7 @@ export class ReportsService {
    * Estrutura: Número, Carteira, Data (dia), Quantidade de Mensagens
    * Agrupa por linha e por dia
    */
-  async getMensagensPorLinhaReport(filters: ReportFilterDto) {
+  async getMensagensPorLinhaReport(filters: ReportFilterDto, userIdentifier?: 'cliente' | 'proprietario') {
     const whereClauseCampaigns: any = {};
     const whereClauseConversations: any = {
       sender: 'operator',
@@ -1417,24 +1650,32 @@ export class ReportsService {
     const lineIds = lines.map(l => l.id);
     const lineMap = new Map(lines.map(l => [l.id, l]));
 
+    // Aplicar filtro de identificador nas campanhas
+    const finalCampaignWhere = await this.applyIdentifierFilter(
+      { ...whereClauseCampaigns, lineReceptor: { in: lineIds } },
+      userIdentifier,
+      'campaign'
+    );
+
     // Buscar campanhas (mensagens massivas) apenas das linhas filtradas
     const campaigns = await this.prisma.campaign.findMany({
-      where: {
-        ...whereClauseCampaigns,
-        lineReceptor: { in: lineIds }, // Apenas campanhas das linhas filtradas
-      },
+      where: finalCampaignWhere,
       select: {
         lineReceptor: true,
         dateTime: true, // Incluir data para agrupamento por dia
       },
     });
 
+    // Aplicar filtro de identificador nas conversas
+    const finalConversationWhere = await this.applyIdentifierFilter(
+      { ...whereClauseConversations, userLine: { in: lineIds } },
+      userIdentifier,
+      'conversation'
+    );
+
     // Buscar conversas (mensagens individuais enviadas por operadores) apenas das linhas filtradas
     const conversations = await this.prisma.conversation.findMany({
-      where: {
-        ...whereClauseConversations,
-        userLine: { in: lineIds }, // Apenas conversas das linhas filtradas
-      },
+      where: finalConversationWhere,
       select: {
         userLine: true,
         datetime: true, // Incluir data para agrupamento por dia
@@ -1534,7 +1775,7 @@ export class ReportsService {
    * RELATÓRIO DE USUÁRIOS
    * Estrutura: Nome, E-mail, Segmento, ROLE
    */
-  async getUsuariosReport(filters: ReportFilterDto) {
+  async getUsuariosReport(filters: ReportFilterDto, userIdentifier?: 'cliente' | 'proprietario') {
     const whereClause: any = {
       email: {
         endsWith: '@paschoalotto.com.br',
@@ -1545,8 +1786,11 @@ export class ReportsService {
       whereClause.segment = filters.segment;
     }
 
+    // Aplicar filtro de identificador
+    const finalWhereClause = await this.applyIdentifierFilter(whereClause, userIdentifier, 'user');
+
     const users = await this.prisma.user.findMany({
-      where: whereClause,
+      where: finalWhereClause,
       orderBy: { name: 'asc' },
     });
 
@@ -1575,7 +1819,7 @@ export class ReportsService {
    * Data e Hora ínicio da Conversa, Data e hora fim da Conversa, Finalização,
    * Segmento, Carteira, Protocolo
    */
-  async getResumoAtendimentosReport(filters: ReportFilterDto) {
+  async getResumoAtendimentosReport(filters: ReportFilterDto, userIdentifier?: 'cliente' | 'proprietario') {
     console.log('📊 [Reports] Gerando Resumo Atendimentos com filtros:', JSON.stringify(filters));
     
     const whereClause: any = {};
@@ -1596,10 +1840,13 @@ export class ReportsService {
       }
     }
 
-    console.log('📊 [Reports] Where clause:', JSON.stringify(whereClause));
+    // Aplicar filtro de identificador
+    const finalWhereClause = await this.applyIdentifierFilter(whereClause, userIdentifier, 'conversation');
+
+    console.log('📊 [Reports] Where clause:', JSON.stringify(finalWhereClause));
 
     const conversations = await this.prisma.conversation.findMany({
-      where: whereClause,
+      where: finalWhereClause,
       orderBy: { datetime: 'asc' },
     });
 
@@ -1661,7 +1908,7 @@ export class ReportsService {
    * Login do Operador, Número de Saída, CPF do Cliente, Telefone do Cliente,
    * Finalização, Disparo, Falha, Entrega, Retorno
    */
-  async getHiperPersonalizadoReport(filters: ReportFilterDto) {
+  async getHiperPersonalizadoReport(filters: ReportFilterDto, userIdentifier?: 'cliente' | 'proprietario') {
     const whereClause: any = {};
 
     if (filters.segment) {
@@ -1678,8 +1925,11 @@ export class ReportsService {
       }
     }
 
+    // Aplicar filtro de identificador nas campanhas
+    const finalCampaignWhere = await this.applyIdentifierFilter(whereClause, userIdentifier, 'campaign');
+
     const campaigns = await this.prisma.campaign.findMany({
-      where: whereClause,
+      where: finalCampaignWhere,
       orderBy: { dateTime: 'desc' },
     });
 
@@ -1708,10 +1958,14 @@ export class ReportsService {
 
     // Buscar conversas para verificar retorno e finalização
     const contactPhones = campaigns.map(c => c.contactPhone);
+    // Aplicar filtro de identificador nas conversas também
+    const conversationWhere = await this.applyIdentifierFilter(
+      { contactPhone: { in: contactPhones } },
+      userIdentifier,
+      'conversation'
+    );
     const conversations = await this.prisma.conversation.findMany({
-      where: {
-        contactPhone: { in: contactPhones },
-      },
+      where: conversationWhere,
     });
 
     const tabulations = await this.prisma.tabulation.findMany();

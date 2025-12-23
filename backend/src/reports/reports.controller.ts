@@ -31,25 +31,28 @@ export class ReportsController {
   @Get('op-sintetico')
   @Roles('admin', 'supervisor', 'digital')
   async getOpSinteticoReport(@Query() filters: ReportFilterDto, @CurrentUser() user: any) {
-    return this.reportsService.getOpSinteticoReport(this.applySegmentFilter(filters, user));
+    return this.reportsService.getOpSinteticoReport(
+      this.applySegmentFilter(filters, user),
+      user.identifier
+    );
   }
 
   @Get('kpi')
   @Roles('admin', 'supervisor', 'digital')
   async getKpiReport(@Query() filters: ReportFilterDto, @CurrentUser() user: any) {
-    return this.reportsService.getKpiReport(this.applySegmentFilter(filters, user));
+    return this.reportsService.getKpiReport(this.applySegmentFilter(filters, user), user.identifier);
   }
 
   @Get('hsm')
   @Roles('admin', 'supervisor', 'digital')
   async getHsmReport(@Query() filters: ReportFilterDto, @CurrentUser() user: any) {
-    return this.reportsService.getHsmReport(this.applySegmentFilter(filters, user));
+    return this.reportsService.getHsmReport(this.applySegmentFilter(filters, user), user.identifier);
   }
 
   @Get('line-status')
   @Roles('admin', 'supervisor', 'digital')
   async getLineStatusReport(@Query() filters: ReportFilterDto, @CurrentUser() user: any) {
-    return this.reportsService.getLineStatusReport(this.applySegmentFilter(filters, user));
+    return this.reportsService.getLineStatusReport(this.applySegmentFilter(filters, user), user.identifier);
   }
 
   /**
@@ -59,19 +62,19 @@ export class ReportsController {
   @Get('envios')
   @Roles('admin', 'supervisor', 'digital')
   async getEnviosReport(@Query() filters: ReportFilterDto, @CurrentUser() user: any) {
-    return this.reportsService.getEnviosReport(this.applySegmentFilter(filters, user));
+    return this.reportsService.getEnviosReport(this.applySegmentFilter(filters, user), user.identifier);
   }
 
   @Get('indicadores')
   @Roles('admin', 'supervisor', 'digital')
   async getIndicadoresReport(@Query() filters: ReportFilterDto, @CurrentUser() user: any) {
-    return this.reportsService.getIndicadoresReport(this.applySegmentFilter(filters, user));
+    return this.reportsService.getIndicadoresReport(this.applySegmentFilter(filters, user), user.identifier);
   }
 
   @Get('tempos')
   @Roles('admin', 'supervisor', 'digital')
   async getTemposReport(@Query() filters: ReportFilterDto, @CurrentUser() user: any) {
-    return this.reportsService.getTemposReport(this.applySegmentFilter(filters, user));
+    return this.reportsService.getTemposReport(this.applySegmentFilter(filters, user), user.identifier);
   }
 
   /**
@@ -81,61 +84,61 @@ export class ReportsController {
   @Get('templates')
   @Roles('admin', 'supervisor', 'digital')
   async getTemplatesReport(@Query() filters: ReportFilterDto, @CurrentUser() user: any) {
-    return this.reportsService.getTemplatesReport(this.applySegmentFilter(filters, user));
+    return this.reportsService.getTemplatesReport(this.applySegmentFilter(filters, user), user.identifier);
   }
 
   @Get('completo-csv')
   @Roles('admin', 'supervisor', 'digital')
   async getCompletoCsvReport(@Query() filters: ReportFilterDto, @CurrentUser() user: any) {
-    return this.reportsService.getCompletoCsvReport(this.applySegmentFilter(filters, user));
+    return this.reportsService.getCompletoCsvReport(this.applySegmentFilter(filters, user), user.identifier);
   }
 
   @Get('equipe')
   @Roles('admin', 'supervisor', 'digital')
   async getEquipeReport(@Query() filters: ReportFilterDto, @CurrentUser() user: any) {
-    return this.reportsService.getEquipeReport(this.applySegmentFilter(filters, user));
+    return this.reportsService.getEquipeReport(this.applySegmentFilter(filters, user), user.identifier);
   }
 
   @Get('dados-transacionados')
   @Roles('admin', 'supervisor', 'digital')
   async getDadosTransacionadosReport(@Query() filters: ReportFilterDto, @CurrentUser() user: any) {
-    return this.reportsService.getDadosTransacionadosReport(this.applySegmentFilter(filters, user));
+    return this.reportsService.getDadosTransacionadosReport(this.applySegmentFilter(filters, user), user.identifier);
   }
 
   @Get('detalhado-conversas')
   @Roles('admin', 'supervisor', 'digital')
   async getDetalhadoConversasReport(@Query() filters: ReportFilterDto, @CurrentUser() user: any) {
-    return this.reportsService.getDetalhadoConversasReport(this.applySegmentFilter(filters, user));
+    return this.reportsService.getDetalhadoConversasReport(this.applySegmentFilter(filters, user), user.identifier);
   }
 
   @Get('linhas')
   @Roles('admin', 'supervisor', 'digital')
   async getLinhasReport(@Query() filters: ReportFilterDto, @CurrentUser() user: any) {
-    return this.reportsService.getLinhasReport(this.applySegmentFilter(filters, user));
+    return this.reportsService.getLinhasReport(this.applySegmentFilter(filters, user), user.identifier);
   }
 
   @Get('mensagens-por-linha')
   @Roles('admin', 'supervisor', 'digital')
   async getMensagensPorLinhaReport(@Query() filters: ReportFilterDto, @CurrentUser() user: any) {
-    return this.reportsService.getMensagensPorLinhaReport(this.applySegmentFilter(filters, user));
+    return this.reportsService.getMensagensPorLinhaReport(this.applySegmentFilter(filters, user), user.identifier);
   }
 
   @Get('resumo-atendimentos')
   @Roles('admin', 'supervisor', 'digital')
   async getResumoAtendimentosReport(@Query() filters: ReportFilterDto, @CurrentUser() user: any) {
-    return this.reportsService.getResumoAtendimentosReport(this.applySegmentFilter(filters, user));
+    return this.reportsService.getResumoAtendimentosReport(this.applySegmentFilter(filters, user), user.identifier);
   }
 
   @Get('usuarios')
   @Roles('admin', 'supervisor', 'digital')
   async getUsuariosReport(@Query() filters: ReportFilterDto, @CurrentUser() user: any) {
-    return this.reportsService.getUsuariosReport(this.applySegmentFilter(filters, user));
+    return this.reportsService.getUsuariosReport(this.applySegmentFilter(filters, user), user.identifier);
   }
 
   @Get('hiper-personalizado')
   @Roles('admin', 'supervisor', 'digital')
   async getHiperPersonalizadoReport(@Query() filters: ReportFilterDto, @CurrentUser() user: any) {
-    return this.reportsService.getHiperPersonalizadoReport(this.applySegmentFilter(filters, user));
+    return this.reportsService.getHiperPersonalizadoReport(this.applySegmentFilter(filters, user), user.identifier);
   }
 
   /**
@@ -165,22 +168,22 @@ export class ReportsController {
       usuarios,
       hiperPersonalizado,
     ] = await Promise.all([
-      this.reportsService.getOpSinteticoReport(filteredFilters),
-      this.reportsService.getKpiReport(filteredFilters),
-      this.reportsService.getHsmReport(filteredFilters),
-      this.reportsService.getLineStatusReport(filteredFilters),
-      this.reportsService.getEnviosReport(filteredFilters),
-      this.reportsService.getIndicadoresReport(filteredFilters),
-      this.reportsService.getTemposReport(filteredFilters),
-      this.reportsService.getTemplatesReport(filteredFilters),
-      this.reportsService.getCompletoCsvReport(filteredFilters),
-      this.reportsService.getEquipeReport(filteredFilters),
-      this.reportsService.getDadosTransacionadosReport(filteredFilters),
-      this.reportsService.getDetalhadoConversasReport(filteredFilters),
-      this.reportsService.getLinhasReport(filteredFilters),
-      this.reportsService.getResumoAtendimentosReport(filteredFilters),
-      this.reportsService.getUsuariosReport(filteredFilters),
-      this.reportsService.getHiperPersonalizadoReport(filteredFilters),
+      this.reportsService.getOpSinteticoReport(filteredFilters, user.identifier),
+      this.reportsService.getKpiReport(filteredFilters, user.identifier),
+      this.reportsService.getHsmReport(filteredFilters, user.identifier),
+      this.reportsService.getLineStatusReport(filteredFilters, user.identifier),
+      this.reportsService.getEnviosReport(filteredFilters, user.identifier),
+      this.reportsService.getIndicadoresReport(filteredFilters, user.identifier),
+      this.reportsService.getTemposReport(filteredFilters, user.identifier),
+      this.reportsService.getTemplatesReport(filteredFilters, user.identifier),
+      this.reportsService.getCompletoCsvReport(filteredFilters, user.identifier),
+      this.reportsService.getEquipeReport(filteredFilters, user.identifier),
+      this.reportsService.getDadosTransacionadosReport(filteredFilters, user.identifier),
+      this.reportsService.getDetalhadoConversasReport(filteredFilters, user.identifier),
+      this.reportsService.getLinhasReport(filteredFilters, user.identifier),
+      this.reportsService.getResumoAtendimentosReport(filteredFilters, user.identifier),
+      this.reportsService.getUsuariosReport(filteredFilters, user.identifier),
+      this.reportsService.getHiperPersonalizadoReport(filteredFilters, user.identifier),
     ]);
 
     return {
