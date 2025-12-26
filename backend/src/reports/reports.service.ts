@@ -1342,9 +1342,14 @@ export class ReportsService {
 
   /**
    * RELATÓRIO DE LINHAS
-   * Estrutura: Número, Status, Segmento, Operador Vinculado, Data de Cadastro, Data de Última Movimentação
+   * Estrutura padrão exigida pelo cliente:
+   * - Carteira (segmento)
+   * - Número
+   * - Blindado (sim/não - baseado em lineStatus 'ban')
+   * - Data de Transferência (data da última movimentação)
+   * 
    * Opções:
-   * - onlyMovimentedLines = false/undefined: Todas as linhas (mostra data cadastro e última movimentação)
+   * - onlyMovimentedLines = false/undefined: Todas as linhas
    * - onlyMovimentedLines = true: Apenas linhas movimentadas (com conversas/campanhas no período)
    * 
    * IMPORTANTE: Traz TODAS as linhas (incluindo segmento "Padrão") para que o total bata com o esperado
@@ -1438,35 +1443,8 @@ export class ReportsService {
     const segments = await this.prisma.segment.findMany();
     const segmentMap = new Map(segments.map(s => [s.id, s]));
 
-    // Buscar TODOS os operadores vinculados via LineOperator
-    const lineIdsArray = lines.map(l => l.id);
-    const lineOperatorsQuery: any = {
-      lineId: { in: lineIdsArray },
-      user: {
-        email: {
-          endsWith: '@paschoalotto.com.br',
-        },
-      },
-    };
-
-    // Buscar TODOS os lineOperators
-    const allLineOperators = await (this.prisma as any).lineOperator.findMany({
-      where: lineOperatorsQuery,
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: 'asc',
-      },
-    });
-
     // Buscar última movimentação de cada linha (última conversa, última campanha, ou última mudança de status)
+    const lineIdsArray = lines.map(l => l.id);
     // Buscar última conversa de cada linha
     const lastConversations = await this.prisma.conversation.findMany({
       where: {
@@ -1538,28 +1516,11 @@ export class ReportsService {
       // Se não tem nem conversa nem campanha, não adiciona ao mapa (última movimentação será updatedAt)
     });
 
-    // Agrupar operadores por linha
-    const operatorsByLine = new Map<number, Array<{ user: any; createdAt: Date }>>();
-    
-    allLineOperators.forEach((lo: any) => {
-      if (!operatorsByLine.has(lo.lineId)) {
-        operatorsByLine.set(lo.lineId, []);
-      }
-      operatorsByLine.get(lo.lineId)!.push({
-        user: lo.user,
-        createdAt: lo.createdAt,
-      });
-    });
-
     // Não filtrar por data quando onlyMovimentedLines = false - mostrar TODAS as linhas
     let filteredLines = lines;
 
     const result = filteredLines.map(line => {
       const segment = line.segment ? segmentMap.get(line.segment) : null;
-      
-      // Pegar operadores vinculados (se houver)
-      const operators = operatorsByLine.get(line.id) || [];
-      const operatorNames = operators.map((op: any) => op.user.name).join(', ') || null;
 
       // Última movimentação: última conversa/campanha OU updatedAt (mudança de status, ex: banida)
       const lastMovement = lastMovementByLine.get(line.id);
@@ -1567,31 +1528,15 @@ export class ReportsService {
         ? lastMovement 
         : line.updatedAt; // Se não tem movimento, usar updatedAt (quando foi banida ou atualizada)
 
-      // Se onlyMovimentedLines = true, já filtramos acima - mostrar data de movimentação
-      // Se onlyMovimentedLines = false/undefined, mostrar data de cadastro e última movimentação
-      if (filters.onlyMovimentedLines === true) {
-        return {
-          Carteira: this.normalizeText(segment?.name) || 'Sem segmento',
-          Número: line.phone,
-          Status: line.lineStatus === 'ban' ? 'Banida' : line.lineStatus === 'active' ? 'Ativa' : 'Desconhecido',
-          'Operador Vinculado': this.normalizeText(operatorNames) || 'Sem operador',
-          'Data de Última Movimentação': this.formatDateTime(lastActivity),
-          // Campo auxiliar para ordenação
-          _sortDate: lastActivity,
-        };
-      } else {
-        // Mostrar todas as linhas com data de cadastro e última movimentação
-        return {
-          Carteira: this.normalizeText(segment?.name) || 'Sem segmento',
-          Número: line.phone,
-          Status: line.lineStatus === 'ban' ? 'Banida' : line.lineStatus === 'active' ? 'Ativa' : 'Desconhecido',
-          'Operador Vinculado': this.normalizeText(operatorNames) || 'Sem operador',
-          'Data de Cadastro': this.formatDateTime(line.createdAt),
-          'Data de Última Movimentação': this.formatDateTime(lastActivity),
-          // Campo auxiliar para ordenação
-          _sortDate: lastActivity,
-        };
-      }
+      // Estrutura padrão exigida pelo cliente: Carteira, Número, Blindado, Data de Transferência
+      return {
+        Carteira: this.normalizeText(segment?.name) || 'Sem segmento',
+        Número: line.phone,
+        Blindado: line.lineStatus === 'ban' ? 'Sim' : 'Não',
+        'Data de Transferência': this.formatDateTime(lastActivity),
+        // Campo auxiliar para ordenação
+        _sortDate: lastActivity,
+      };
     });
 
     // Ordenar por data (updatedAt para todas, ou data de movimentação para apenas movimentadas)
