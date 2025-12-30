@@ -8,9 +8,23 @@ export class ContactsService {
   constructor(private prisma: PrismaService) {}
 
   async create(createContactDto: CreateContactDto) {
-    return this.prisma.contact.create({
+    // Criar o contato
+    const contact = await this.prisma.contact.create({
       data: createContactDto,
     });
+
+    // Se existe nome, atualizar todas as conversas com "Desconhecido" para este telefone
+    if (createContactDto.name && createContactDto.name.trim() !== '') {
+      await this.prisma.conversation.updateMany({
+        where: {
+          contactPhone: contact.phone,
+          contactName: 'Desconhecido',
+        },
+        data: { contactName: createContactDto.name },
+      });
+    }
+
+    return contact;
   }
 
   async findAll(search?: string, segment?: number) {
@@ -50,12 +64,23 @@ export class ContactsService {
   }
 
   async update(id: number, updateContactDto: UpdateContactDto) {
-    await this.findOne(id);
+    const contact = await this.findOne(id);
 
-    return this.prisma.contact.update({
+    // Atualizar o contato
+    const updatedContact = await this.prisma.contact.update({
       where: { id },
       data: updateContactDto,
     });
+
+    // Se o nome foi alterado, atualizar contactName em todas as conversas relacionadas
+    if (updateContactDto.name !== undefined && updateContactDto.name !== contact.name) {
+      await this.prisma.conversation.updateMany({
+        where: { contactPhone: contact.phone },
+        data: { contactName: updateContactDto.name },
+      });
+    }
+
+    return updatedContact;
   }
 
   // Atualizar contato por telefone (útil para atualizar durante atendimento)
@@ -73,10 +98,21 @@ export class ContactsService {
       (updateContactDto as any).lastCPCAt = null;
     }
 
-    return this.prisma.contact.update({
+    // Atualizar o contato
+    const updatedContact = await this.prisma.contact.update({
       where: { id: contact.id },
       data: updateContactDto,
     });
+
+    // Se o nome foi alterado, atualizar contactName em todas as conversas relacionadas
+    if (updateContactDto.name !== undefined && updateContactDto.name !== contact.name) {
+      await this.prisma.conversation.updateMany({
+        where: { contactPhone: phone },
+        data: { contactName: updateContactDto.name },
+      });
+    }
+
+    return updatedContact;
   }
 
   async remove(id: number) {

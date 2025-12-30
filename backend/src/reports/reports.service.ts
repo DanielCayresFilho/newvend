@@ -1469,6 +1469,11 @@ export class ReportsService {
 
     // Se onlyMovimentedLines = true, filtrar apenas linhas que foram movimentadas
     if (filters.onlyMovimentedLines === true) {
+      // Buscar segmento "Padrão" para excluí-lo
+      const padraoSegment = await this.prisma.segment.findUnique({
+        where: { name: 'Padrão' },
+      });
+      
       const lineIds = lines.map(l => l.id);
       
       // Preparar filtros de data para buscar movimentações
@@ -1504,25 +1509,19 @@ export class ReportsService {
         distinct: ['lineReceptor'],
       });
 
-      // Buscar linhas que mudaram de status (banidas) no período
-      const linesStatusChanged = await this.prisma.linesStock.findMany({
-        where: {
-          id: { in: lineIds },
-          ...(Object.keys(dateFilter).length > 0 && { updatedAt: dateFilter }),
-        },
-        select: { id: true },
-      });
-
-      // Combinar todas as linhas movimentadas
+      // Combinar todas as linhas movimentadas (apenas por conversas/campanhas, não por mudança de status)
       const movimentedLineIds = new Set<number>();
       conversationsInPeriod.forEach(c => { if (c.userLine) movimentedLineIds.add(c.userLine); });
       campaignsInPeriod.forEach(c => { if (c.lineReceptor) movimentedLineIds.add(c.lineReceptor); });
-      linesStatusChanged.forEach(l => movimentedLineIds.add(l.id));
 
-      // Filtrar apenas linhas movimentadas
-      lines = lines.filter(l => movimentedLineIds.has(l.id));
+      // Filtrar apenas linhas movimentadas E excluir linhas do segmento "Padrão"
+      lines = lines.filter(l => {
+        const isMovimented = movimentedLineIds.has(l.id);
+        const isNotPadrao = padraoSegment ? l.segment !== padraoSegment.id : true;
+        return isMovimented && isNotPadrao;
+      });
       
-      console.log(`[Reports] Linhas movimentadas encontradas: ${lines.length} de ${lineIds.length} totais`);
+      console.log(`[Reports] Linhas movimentadas encontradas (excluindo Padrão): ${lines.length} de ${lineIds.length} totais`);
     }
 
     const segments = await this.prisma.segment.findMany();
